@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Tomorrow Is Here Estate — Interactive Survey Map</title>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,300;6..72,400;6..72,500;6..72,600;6..72,700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;-webkit-tap-highlight-color:transparent}
+body{font-family:'Inter',system-ui,sans-serif;background:#0a0a0a;color:#e5e5e5}
+#map-root{position:fixed;inset:0;overflow:hidden;cursor:grab;touch-action:none;background:#0a0a0a}
+#map-root.dragging{cursor:grabbing}
+#wrap{transform-origin:0 0;will-change:transform}
+#wrap svg{display:block}
+.plot-poly{cursor:pointer;transition:fill-opacity .12s,stroke-width .12s,filter .12s;vector-effect:non-scaling-stroke}
+.plot-poly:hover{fill-opacity:.92!important;stroke-width:1.2!important;filter:brightness(1.2) drop-shadow(0 0 3px rgba(255,255,255,.15))}
+.plot-poly.selected{stroke:#c9a84c!important;stroke-width:2!important;stroke-opacity:1!important;filter:drop-shadow(0 0 6px rgba(201,168,76,.4))!important;animation:plotPulse 2s ease infinite}
+@keyframes plotPulse{0%,100%{filter:drop-shadow(0 0 6px rgba(201,168,76,.4))}50%{filter:drop-shadow(0 0 12px rgba(201,168,76,.6))}}
+.block-label{font-family:'Newsreader',serif;font-weight:600;fill:rgba(255,255,255,.08);pointer-events:none;user-select:none}
+#topbar{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:linear-gradient(180deg,rgba(10,10,10,.98) 0%,rgba(10,10,10,.85) 65%,transparent 100%);pointer-events:none}
+#topbar>*{pointer-events:auto}
+.brand{display:flex;align-items:center;gap:14px}
+.brand-mark{width:42px;height:42px;border-radius:10px;background:linear-gradient(145deg,#c9a84c,#8a6d2f);display:flex;align-items:center;justify-content:center;font-family:'Newsreader',serif;font-weight:700;font-size:17px;color:#0a0a0a;box-shadow:0 2px 12px rgba(201,168,76,.25)}
+.brand h1{font-family:'Newsreader',serif;font-size:20px;font-weight:600;color:#e8cc6e;line-height:1.1}
+.brand .sub{font-size:9px;color:rgba(255,255,255,.28);letter-spacing:2.5px;text-transform:uppercase;margin-top:2px;font-family:'Inter',sans-serif}
+.legend{display:flex;gap:2px;background:rgba(18,18,18,.94);border:1px solid rgba(255,255,255,.06);border-radius:26px;padding:4px 5px;backdrop-filter:blur(20px)}
+.leg-chip{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:22px;font-size:11px;font-weight:500;color:rgba(255,255,255,.6);cursor:pointer;transition:all .12s}
+.leg-chip:hover{background:rgba(255,255,255,.05)}
+.leg-chip.active{background:rgba(255,255,255,.06)}
+.leg-dot{width:10px;height:10px;border-radius:3px}
+.leg-num{font-weight:700;color:#fff;font-variant-numeric:tabular-nums;margin-left:2px}
+.search-wrap{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:55;display:flex;align-items:center;width:300px;background:rgba(18,18,18,.94);border:1px solid rgba(255,255,255,.08);border-radius:12px;backdrop-filter:blur(20px);overflow:hidden;transition:all .2s;box-shadow:0 4px 20px rgba(0,0,0,.3)}
+.search-wrap:focus-within{border-color:rgba(201,168,76,.3);box-shadow:0 4px 24px rgba(201,168,76,.1)}
+.search-icon{padding:0 4px 0 14px;color:rgba(255,255,255,.25);display:flex;align-items:center}
+.search-icon svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#search{flex:1;background:transparent;border:none;outline:none;color:#e5e5e5;font-family:'Inter',sans-serif;font-size:13px;padding:11px 14px 11px 8px}
+#search::placeholder{color:rgba(255,255,255,.2)}
+.search-results{position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:56;width:300px;background:rgba(14,14,14,.97);border:1px solid rgba(255,255,255,.08);border-radius:12px;max-height:260px;overflow-y:auto;display:none;backdrop-filter:blur(28px);box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.search-results.open{display:block}
+.sr-item{padding:10px 16px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:background .08s;border-bottom:1px solid rgba(255,255,255,.03)}
+.sr-item:last-child{border-bottom:none}
+.sr-item:hover{background:rgba(201,168,76,.08)}
+.sr-id{font-family:'Newsreader',serif;font-weight:600;font-size:14px;color:#e8cc6e}
+.sr-block{font-size:10px;color:rgba(255,255,255,.3)}
+.sr-badge{font-size:9px;font-weight:700;padding:2px 8px;border-radius:8px;text-transform:uppercase}
+.sr-badge.available{background:rgba(34,197,94,.1);color:#22c55e}
+.sr-badge.sold{background:rgba(239,68,68,.08);color:#ef4444}
+.sr-badge.reserved{background:rgba(234,179,8,.08);color:#eab308}
+.block-filters{position:fixed;top:62px;left:24px;z-index:50;display:flex;flex-wrap:wrap;gap:4px;max-width:420px}
+.bf-btn{padding:4px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.06);background:rgba(18,18,18,.85);color:rgba(255,255,255,.35);font-size:10px;font-weight:600;cursor:pointer;transition:all .12s;backdrop-filter:blur(12px);font-family:'Inter',sans-serif}
+.bf-btn:hover{background:rgba(201,168,76,.1);color:#e8cc6e;border-color:rgba(201,168,76,.2)}
+.bf-btn.on{background:rgba(201,168,76,.14);color:#e8cc6e;border-color:rgba(201,168,76,.25)}
+.bf-cnt{font-size:7px;color:rgba(255,255,255,.2);margin-left:2px;font-weight:400}
+.bf-rst{padding:4px 12px;border-radius:7px;border:1px solid rgba(201,168,76,.15);background:rgba(201,168,76,.08);color:#e8cc6e;font-size:10px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}
+.stats{position:fixed;bottom:20px;left:20px;z-index:50;display:flex;gap:1px;background:rgba(18,18,18,.92);border:1px solid rgba(255,255,255,.07);border-radius:14px;overflow:hidden;backdrop-filter:blur(24px)}
+.stat-item{padding:10px 18px;text-align:center;min-width:70px}
+.stat-item+.stat-item{border-left:1px solid rgba(255,255,255,.04)}
+.stat-num{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.stat-lbl{font-size:7px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.25);margin-top:2px}
+.ctrls{position:fixed;bottom:20px;right:20px;z-index:50;display:flex;flex-direction:column;gap:1px;background:rgba(18,18,18,.92);border:1px solid rgba(255,255,255,.07);border-radius:14px;overflow:hidden;backdrop-filter:blur(24px);box-shadow:0 8px 32px rgba(0,0,0,.3)}
+.ctrl-btn{width:46px;height:46px;background:transparent;border:none;color:rgba(255,255,255,.45);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .1s}
+.ctrl-btn:hover{background:rgba(255,255,255,.05);color:#fff}
+.ctrl-btn:active{transform:scale(.93)}
+.ctrl-btn+.ctrl-btn{border-top:1px solid rgba(255,255,255,.04)}
+.ctrl-btn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.zoom-pct{position:fixed;bottom:22px;right:78px;z-index:50;background:rgba(18,18,18,.85);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:7px 13px;font-size:11px;font-weight:600;color:rgba(255,255,255,.28);font-variant-numeric:tabular-nums;backdrop-filter:blur(20px)}
+#tip{position:fixed;z-index:200;pointer-events:none;opacity:0;transition:opacity .06s;background:rgba(14,14,14,.96);border:1px solid rgba(255,255,255,.09);border-radius:13px;padding:14px 18px;min-width:200px;box-shadow:0 16px 48px rgba(0,0,0,.5);backdrop-filter:blur(28px)}
+#tip.on{opacity:1}
+.tip-head{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.tip-id{font-family:'Newsreader',serif;font-size:17px;font-weight:600;color:#e8cc6e}
+.tip-badge{font-size:9px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:10px;text-transform:uppercase}
+.tip-badge.available{background:rgba(34,197,94,.12);color:#22c55e}
+.tip-badge.sold{background:rgba(239,68,68,.10);color:#ef4444}
+.tip-badge.reserved{background:rgba(234,179,8,.10);color:#eab308}
+.tip-meta{font-size:11px;color:rgba(255,255,255,.3);margin-top:5px}
+#panel{position:fixed;top:0;right:0;bottom:0;width:395px;z-index:100;background:rgba(12,12,12,.98);border-left:1px solid rgba(255,255,255,.06);backdrop-filter:blur(40px);transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-24px 0 64px rgba(0,0,0,.5)}
+#panel.open{transform:translateX(0)}
+.panel-close{position:absolute;top:14px;right:14px;width:36px;height:36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:10px;color:rgba(255,255,255,.35);font-size:16px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;transition:all .1s}
+.panel-close:hover{background:rgba(255,255,255,.08);color:#fff}
+.panel-hero{position:relative;padding:38px 28px 24px;background:radial-gradient(ellipse at 50% 0%,var(--hc,rgba(34,197,94,.15)) 0%,transparent 70%)}
+.panel-hero .label{font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.3);font-weight:500}
+.panel-hero .title{font-family:'Newsreader',serif;font-size:38px;font-weight:700;color:#e8cc6e;line-height:1.1;margin-top:4px}
+.panel-hero .subtitle{font-size:11px;color:rgba(255,255,255,.25);margin-top:6px}
+.panel-body{flex:1;overflow-y:auto;padding:0 24px 28px}
+.panel-body::-webkit-scrollbar{width:3px}
+.panel-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:4px}
+.pd-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.pd-card{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:14px 16px}
+.pd-card.wide{grid-column:1/-1}
+.pd-card .lbl{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.25);margin-bottom:5px}
+.pd-card .val{font-size:14px;font-weight:600;color:#e5e5e5}
+.pd-card.price{background:linear-gradient(135deg,rgba(201,168,76,.08),rgba(201,168,76,.03));border-color:rgba(201,168,76,.12)}
+.pd-card.price .val{font-family:'Newsreader',serif;font-size:26px;color:#e8cc6e}
+.pd-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:5px 14px;border-radius:10px;text-transform:uppercase;letter-spacing:.5px}
+.pd-status.available{background:rgba(34,197,94,.1);color:#22c55e}
+.pd-status.sold{background:rgba(239,68,68,.08);color:#ef4444}
+.pd-status.reserved{background:rgba(234,179,8,.08);color:#eab308}
+.pd-status .dot{width:8px;height:8px;border-radius:50%}
+.pd-status.available .dot{background:#22c55e}
+.pd-status.sold .dot{background:#ef4444}
+.pd-status.reserved .dot{background:#eab308}
+.enquire-btn{display:block;width:100%;margin-top:20px;padding:16px;border-radius:12px;border:none;font-family:'Inter',sans-serif;font-size:14px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:1px;transition:all .15s}
+.enquire-btn.active{background:linear-gradient(135deg,#c9a84c,#e8cc6e);color:#0a0a0a;box-shadow:0 4px 20px rgba(201,168,76,.3)}
+.enquire-btn.active:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(201,168,76,.4)}
+.enquire-btn.disabled{background:rgba(255,255,255,.04);color:rgba(255,255,255,.2);cursor:default}
+.onboard{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:300;text-align:center;animation:fadeOnboard 5.5s ease forwards;pointer-events:none}
+@keyframes fadeOnboard{0%{opacity:0;transform:translate(-50%,-50%) scale(.95)}8%{opacity:1;transform:translate(-50%,-50%) scale(1)}65%{opacity:1}100%{opacity:0}}
+.onboard h2{font-family:'Newsreader',serif;font-size:28px;color:#e8cc6e;font-weight:600}
+.onboard .plots{font-size:13px;color:rgba(255,255,255,.35);margin:6px 0 18px;letter-spacing:1px}
+.onboard .hints{display:flex;gap:12px;justify-content:center}
+.onboard .hint{background:rgba(18,18,18,.9);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 18px;backdrop-filter:blur(20px)}
+.onboard .hk{font-size:10px;font-weight:700;color:#c9a84c;letter-spacing:1px;text-transform:uppercase}
+.onboard .hv{font-size:10px;color:rgba(255,255,255,.3);margin-top:2px}
+@media(max-width:768px){
+  #topbar{padding:10px 14px;flex-direction:column;gap:8px;align-items:flex-start}
+  .legend{display:none}
+  .search-wrap{width:calc(100% - 28px);top:auto;bottom:76px}
+  .search-results{top:auto;bottom:112px;width:calc(100% - 28px)}
+  .block-filters{top:58px;left:10px;max-width:calc(100% - 20px)}
+  #panel{width:100%;height:75vh;top:auto;transform:translateY(100%);border-left:none;border-top:1px solid rgba(255,255,255,.06);border-radius:20px 20px 0 0}
+  #panel.open{transform:translateY(0)}
+  .stats{left:10px;bottom:10px}
+  .ctrls{right:10px;bottom:10px}
+  .zoom-pct{right:68px;bottom:12px}
+}
+</style>
+</head>
+<body>
+<div id="map-root">
+<div id="wrap">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="600" height="400">
+<rect width="600" height="400" fill="#111815"/>
+<rect x="28.0" y="28.0" width="161.3" height="98.3" rx="3" fill="rgba(255,255,255,.015)" stroke="rgba(255,255,255,.06)" stroke-width=".5"/>
+<g id="plot-layer"></g>
+<g id="block-labels"></g>
+</svg>
+</div>
+</div>
+
+<!-- Tooltip -->
+<div id="tip"></div>
+<!-- Detail Panel -->
+<div id="panel"></div>
+
+<script>
+// ═══ DATA ═══
+const PLOTS = [{"i":"A-1","b":"A","n":"1","t":"residential","s":"available","p":5000000,"z":648,"x":42.0,"y":50.5},{"i":"A-C/1","b":"A","n":"C/1","t":"C","s":"sold","p":10000000,"z":540,"x":54.4,"y":50.5},{"i":"A-CR/1","b":"A","n":"CR/1","t":"CR","s":"sold","p":10000000,"z":540,"x":66.8,"y":50.5},{"i":"A-2","b":"A","n":"2","t":"residential","s":"sold","p":3000000,"z":540,"x":79.2,"y":50.5},{"i":"A-3","b":"A","n":"3","t":"residential","s":"sold","p":5000000,"z":900,"x":91.6,"y":50.5},{"i":"A-4","b":"A","n":"4","t":"residential","s":"available","p":3500000,"z":540,"x":104.0,"y":50.5},{"i":"A-5","b":"A","n":"5","t":"residential","s":"sold","p":2500000,"z":450,"x":116.4,"y":50.5},{"i":"A-6","b":"A","n":"6","t":"residential","s":"available","p":5000000,"z":540,"x":128.8,"y":50.5},{"i":"A-7","b":"A","n":"7","t":"residential","s":"available","p":2500000,"z":500,"x":141.2,"y":50.5},{"i":"A-8","b":"A","n":"8","t":"residential","s":"reserved","p":3500000,"z":540,"x":153.6,"y":50.5},{"i":"A-9","b":"A","n":"9","t":"residential","s":"sold","p":3000000,"z":540,"x":166.0,"y":50.5},{"i":"A-10","b":"A","n":"10","t":"residential","s":"sold","p":3500000,"z":540,"x":178.4,"y":50.5},{"i":"A-UT/1","b":"A","n":"UT/1","t":"UT","s":"available","p":1500000,"z":540,"x":42.0,"y":59.9},{"i":"A-11","b":"A","n":"11","t":"residential","s":"reserved","p":5000000,"z":900,"x":54.4,"y":59.9},{"i":"A-12","b":"A","n":"12","t":"residential","s":"available","p":4000000,"z":540,"x":66.8,"y":59.9},{"i":"A-13","b":"A","n":"13","t":"residential","s":"sold","p":2500000,"z":648,"x":79.2,"y":59.9},{"i":"A-14","b":"A","n":"14","t":"residential","s":"available","p":4500000,"z":900,"x":91.6,"y":59.9},{"i":"A-15","b":"A","n":"15","t":"residential","s":"available","p":4000000,"z":900,"x":104.0,"y":59.9},{"i":"A-16","b":"A","n":"16","t":"residential","s":"reserved","p":4000000,"z":600,"x":116.4,"y":59.9},{"i":"A-17","b":"A","n":"17","t":"residential","s":"sold","p":2500000,"z":540,"x":128.8,"y":59.9},{"i":"A-18","b":"A","n":"18","t":"residential","s":"sold","p":3000000,"z":648,"x":141.2,"y":59.9},{"i":"A-19","b":"A","n":"19","t":"residential","s":"sold","p":3500000,"z":648,"x":153.6,"y":59.9},{"i":"A-20","b":"A","n":"20","t":"residential","s":"sold","p":3000000,"z":648,"x":166.0,"y":59.9},{"i":"A-21","b":"A","n":"21","t":"residential","s":"available","p":2500000,"z":540,"x":178.4,"y":59.9},{"i":"A-22","b":"A","n":"22","t":"residential","s":"available","p":3000000,"z":900,"x":42.0,"y":69.3},{"i":"A-23","b":"A","n":"23","t":"residential","s":"available","p":4000000,"z":450,"x":54.4,"y":69.3},{"i":"A-24","b":"A","n":"24","t":"residential","s":"available","p":4000000,"z":648,"x":66.8,"y":69.3},{"i":"A-25","b":"A","n":"25","t":"residential","s":"reserved","p":5000000,"z":900,"x":79.2,"y":69.3},{"i":"A-26","b":"A","n":"26","t":"residential","s":"available","p":4000000,"z":540,"x":91.6,"y":69.3},{"i":"A-27","b":"A","n":"27","t":"residential","s":"reserved","p":3500000,"z":600,"x":104.0,"y":69.3},{"i":"A-28","b":"A","n":"28","t":"residential","s":"available","p":5000000,"z":540,"x":116.4,"y":69.3},{"i":"A-29","b":"A","n":"29","t":"residential","s":"available","p":4000000,"z":648,"x":128.8,"y":69.3},{"i":"A-30","b":"A","n":"30","t":"residential","s":"reserved","p":2500000,"z":450,"x":141.2,"y":69.3},{"i":"A-31","b":"A","n":"31","t":"residential","s":"available","p":4500000,"z":900,"x":153.6,"y":69.3},{"i":"A-32","b":"A","n":"32","t":"residential","s":"available","p":4000000,"z":500,"x":166.0,"y":69.3},{"i":"A-33","b":"A","n":"33","t":"residential","s":"sold","p":4500000,"z":500,"x":178.4,"y":69.3},{"i":"A-34","b":"A","n":"34","t":"residential","s":"available","p":3500000,"z":540,"x":42.0,"y":78.7},{"i":"A-35","b":"A","n":"35","t":"residential","s":"available","p":2500000,"z":600,"x":54.4,"y":78.7},{"i":"A-36","b":"A","n":"36","t":"residential","s":"sold","p":4000000,"z":900,"x":66.8,"y":78.7},{"i":"A-37","b":"A","n":"37","t":"residential","s":"available","p":4000000,"z":900,"x":79.2,"y":78.7},{"i":"A-38","b":"A","n":"38","t":"residential","s":"available","p":4500000,"z":450,"x":91.6,"y":78.7},{"i":"A-39","b":"A","n":"39","t":"residential","s":"available","p":5000000,"z":450,"x":104.0,"y":78.7},{"i":"A-40","b":"A","n":"40","t":"residential","s":"available","p":3000000,"z":450,"x":116.4,"y":78.7},{"i":"A-CR/2","b":"A","n":"CR/2","t":"CR","s":"sold","p":8000000,"z":600,"x":128.8,"y":78.7},{"i":"A-41","b":"A","n":"41","t":"residential","s":"available","p":5000000,"z":540,"x":141.2,"y":78.7},{"i":"A-42","b":"A","n":"42","t":"residential","s":"available","p":4500000,"z":900,"x":153.6,"y":78.7},{"i":"A-43","b":"A","n":"43","t":"residential","s":"available","p":4500000,"z":600,"x":166.0,"y":78.7},{"i":"A-44","b":"A","n":"44","t":"residential","s":"available","p":3500000,"z":900,"x":178.4,"y":78.7},{"i":"A-45","b":"A","n":"45","t":"residential","s":"available","p":3000000,"z":500,"x":42.0,"y":88.1},{"i":"A-46","b":"A","n":"46","t":"residential","s":"available","p":4000000,"z":900,"x":54.4,"y":88.1},{"i":"A-47","b":"A","n":"47","t":"residential","s":"available","p":3500000,"z":648,"x":66.8,"y":88.1},{"i":"A-48","b":"A","n":"48","t":"residential","s":"sold","p":5000000,"z":540,"x":79.2,"y":88.1},{"i":"A-C/2","b":"A","n":"C/2","t":"C","s":"available","p":5000000,"z":500,"x":91.6,"y":88.1},{"i":"A-49","b":"A","n":"49","t":"residential","s":"reserved","p":4500000,"z":900,"x":104.0,"y":88.1},{"i":"A-50","b":"A","n":"50","t":"residential","s":"reserved","p":5000000,"z":450,"x":116.4,"y":88.1},{"i":"A-51","b":"A","n":"51","t":"residential","s":"available","p":5000000,"z":600,"x":128.8,"y":88.1},{"i":"A-52","b":"A","n":"52","t":"residential","s":"reserved","p":4000000,"z":600,"x":141.2,"y":88.1},{"i":"A-53","b":"A","n":"53","t":"residential","s":"sold","p":2500000,"z":540,"x":153.6,"y":88.1},{"i":"A-54","b":"A","n":"54","t":"residential","s":"sold","p":2500000,"z":450,"x":166.0,"y":88.1},{"i":"A-55","b":"A","n":"55","t":"residential","s":"available","p":3500000,"z":500,"x":178.4,"y":88.1},{"i":"A-UT/2","b":"A","n":"UT/2","t":"UT","s":"sold","p":2500000,"z":900,"x":42.0,"y":97.5},{"i":"A-56","b":"A","n":"56","t":"residential","s":"available","p":4000000,"z":600,"x":54.4,"y":97.5},{"i":"A-57","b":"A","n":"57","t":"residential","s":"sold","p":3500000,"z":540,"x":66.8,"y":97.5},{"i":"A-58","b":"A","n":"58","t":"residential","s":"available","p":4000000,"z":900,"x":79.2,"y":97.5},{"i":"A-P/1","b":"A","n":"P/1","t":"P","s":"available","p":2000000,"z":500,"x":91.6,"y":97.5},{"i":"A-CR/3","b":"A","n":"CR/3","t":"CR","s":"reserved","p":6500000,"z":600,"x":104.0,"y":97.5},{"i":"A-59","b":"A","n":"59","t":"residential","s":"available","p":2500000,"z":450,"x":116.4,"y":97.5},{"i":"A-OS/1","b":"A","n":"OS/1","t":"OS","s":"available","p":1500000,"z":900,"x":128.8,"y":97.5},{"i":"A-60","b":"A","n":"60","t":"residential","s":"sold","p":2500000,"z":648,"x":141.2,"y":97.5},{"i":"A-OS/2","b":"A","n":"OS/2","t":"OS","s":"available","p":2500000,"z":900,"x":153.6,"y":97.5},{"i":"A-61","b":"A","n":"61","t":"residential","s":"sold","p":3000000,"z":900,"x":166.0,"y":97.5},{"i":"A-62","b":"A","n":"62","t":"residential","s":"sold","p":5000000,"z":648,"x":178.4,"y":97.5},{"i":"A-63","b":"A","n":"63","t":"residential","s":"available","p":3000000,"z":500,"x":42.0,"y":106.9},{"i":"A-64","b":"A","n":"64","t":"residential","s":"reserved","p":2500000,"z":450,"x":54.4,"y":106.9},{"i":"A-65","b":"A","n":"65","t":"residential","s":"available","p":3500000,"z":648,"x":66.8,"y":106.9},{"i":"A-66","b":"A","n":"66","t":"residential","s":"available","p":3000000,"z":600,"x":79.2,"y":106.9},{"i":"A-P/2","b":"A","n":"P/2","t":"P","s":"available","p":2500000,"z":500,"x":91.6,"y":106.9},{"i":"A-67","b":"A","n":"67","t":"residential","s":"available","p":4500000,"z":648,"x":104.0,"y":106.9},{"i":"A-68","b":"A","n":"68","t":"residential","s":"available","p":3500000,"z":500,"x":116.4,"y":106.9}];
+const POLYS = ["36.103598398191636,46.0 47.896401601808364,46.103598398191636 48.0,54.896401601808364 36.103598398191636,55.0","48.64357902913814,46.0 60.15642097086186,46.24357902913814 60.4,54.75642097086186 48.64357902913814,55.0","60.93234715734465,46.0 72.66765284265534,46.132347157344654 72.8,54.867652842655346 60.93234715734465,55.0","73.25762961607461,46.0 85.1423703839254,46.057629616074614 85.2,54.942370383925386 73.25762961607461,55.0","85.77132433041668,46.0 97.42867566958331,46.17132433041668 97.6,54.82867566958332 85.77132433041668,55.0","98.2481378295286,46.0 109.7518621704714,46.2481378295286 110.0,54.7518621704714 98.2481378295286,55.0","110.43409190877563,46.0 122.36590809122438,46.03409190877562 122.4,54.96590809122438 110.43409190877563,55.0","122.86322327204047,46.0 134.73677672795955,46.063223272040474 134.8,54.936776727959526 122.86322327204047,55.0","135.42213615113204,46.0 146.97786384886794,46.22213615113206 147.2,54.77786384886794 135.42213615113204,55.0","147.74374873944674,46.0 159.4562512605533,46.14374873944672 159.60000000000002,54.85625126055328 147.74374873944674,55.0","160.0400745495177,46.0 171.9599254504823,46.04007454951769 172.0,54.95992545048231 160.0400745495177,55.0","172.52715016096937,46.0 184.27284983903064,46.12715016096937 184.4,54.87284983903063 172.52715016096937,55.0","36.16332635646195,55.4 47.83667364353805,55.56332635646195 48.0,64.23667364353805 36.16332635646195,64.4","48.66735451187458,55.4 60.13264548812542,55.66735451187458 60.4,64.13264548812542 48.66735451187458,64.4","61.06247122384493,55.4 72.53752877615507,55.66247122384493 72.8,64.13752877615508 61.06247122384493,64.4","73.26977965243113,55.4 85.13022034756888,55.46977965243112 85.2,64.33022034756888 73.26977965243113,64.4","85.8115107324047,55.4 97.38848926759529,55.61151073240471 97.6,64.1884892675953 85.8115107324047,64.4","98.29229022741107,55.4 109.70770977258893,55.69229022741107 110.0,64.10770977258893 98.29229022741107,64.4","110.54175729984748,55.4 122.25824270015254,55.54175729984747 122.4,64.25824270015254 110.54175729984748,64.4","122.80632877487459,55.4 134.79367122512542,55.40632877487458 134.8,64.39367122512542 122.80632877487459,64.4","135.43598906386896,55.4 146.96401093613102,55.63598906386897 147.2,64.16401093613104 135.43598906386896,64.4","147.84728979460877,55.4 159.35271020539128,55.647289794608746 159.60000000000002,64.15271020539126 147.84728979460877,64.4","160.03988848234653,55.4 171.96011151765347,55.439888482346525 172.0,64.36011151765348 160.03988848234653,64.4","172.4656856302142,55.4 184.3343143697858,55.46568563021419 184.4,64.33431436978582 172.4656856302142,64.4","36.04598578825932,64.8 47.95401421174068,64.84598578825931 48.0,73.75401421174068 36.04598578825932,73.8","48.56675576332615,64.8 60.23324423667385,64.96675576332615 60.4,73.63324423667385 48.56675576332615,73.8","61.06294696158144,64.8 72.53705303841855,65.06294696158145 72.8,73.53705303841855 61.06294696158144,73.8","73.48208587404197,64.8 84.91791412595803,65.08208587404197 85.2,73.51791412595803 73.48208587404197,73.8","85.63342168063585,64.8 97.56657831936414,64.83342168063585 97.6,73.76657831936414 85.63342168063585,73.8","98.06615794482359,64.8 109.93384205517641,64.86615794482358 110.0,73.73384205517641 98.06615794482359,73.8","110.4892677923332,64.8 122.31073220766682,64.88926779233319 122.4,73.71073220766681 110.4892677923332,73.8","122.97381429520374,64.8 134.62618570479628,64.97381429520374 134.8,73.62618570479626 122.97381429520374,73.8","135.4756600193266,64.8 146.92433998067338,65.07566001932662 147.2,73.52433998067337 135.4756600193266,73.8","147.79238989020718,64.8 159.40761010979287,64.99238989020716 159.60000000000002,73.60761010979283 147.79238989020718,73.8","160.0318936692703,64.8 171.9681063307297,64.83189366927029 172.0,73.76810633072971 160.0318936692703,73.8","172.52693812030313,64.8 184.27306187969688,64.92693812030312 184.4,73.67306187969687 172.52693812030313,73.8","36.033842708299886,74.2 47.966157291700114,74.23384270829989 48.0,83.16615729170012 36.033842708299886,83.2","48.50894844386355,74.2 60.291051556136445,74.30894844386356 60.4,83.09105155613645 48.50894844386355,83.2","60.80530833517822,74.2 72.79469166482177,74.20530833517823 72.8,83.19469166482178 60.80530833517822,83.2","73.22442075209467,74.2 85.17557924790533,74.22442075209467 85.2,83.17557924790533 73.22442075209467,83.2","85.85883780899529,74.2 97.3411621910047,74.4588378089953 97.6,82.94116219100471 85.85883780899529,83.2","98.00810743483157,74.2 109.99189256516843,74.20810743483158 110.0,83.19189256516843 98.00810743483157,83.2","110.5123205525562,74.2 122.28767944744381,74.3123205525562 122.4,83.0876794474438 110.5123205525562,83.2","122.86945801023873,74.2 134.73054198976126,74.26945801023874 134.8,83.13054198976127 122.86945801023873,83.2","135.4166666520454,74.2 146.98333334795458,74.41666665204541 147.2,82.9833333479546 135.4166666520454,83.2","147.85325834419558,74.2 159.34674165580446,74.45325834419555 159.60000000000002,82.94674165580446 147.85325834419558,83.2","160.14364693188986,74.2 171.85635306811014,74.34364693188986 172.0,83.05635306811014 160.14364693188986,83.2","172.58989352309231,74.2 184.2101064769077,74.38989352309233 184.4,83.01010647690768 172.58989352309231,83.2","36.145732569070226,83.6 47.854267430929774,83.74573256907023 48.0,92.45426743092976 36.145732569070226,92.6","48.53336416484071,83.6 60.266635835159285,83.73336416484071 60.4,92.46663583515928 48.53336416484071,92.6","60.9155435284712,83.6 72.68445647152879,83.7155435284712 72.8,92.48445647152879 60.9155435284712,92.6","73.34916126209153,83.6 85.05083873790848,83.74916126209152 85.2,92.45083873790847 73.34916126209153,92.6","85.6086957067247,83.6 97.59130429327529,83.6086957067247 97.6,92.59130429327529 85.6086957067247,92.6","98.14920915263153,83.6 109.85079084736847,83.74920915263152 110.0,92.45079084736847 98.14920915263153,92.6","110.44816025176613,83.6 122.35183974823389,83.64816025176611 122.4,92.55183974823387 110.44816025176613,92.6","123.05876725533729,83.6 134.54123274466272,83.85876725533728 134.8,92.3412327446627 123.05876725533729,92.6","135.42643601805955,83.6 146.97356398194043,83.82643601805955 147.2,92.37356398194044 135.42643601805955,92.6","147.7079641120312,83.6 159.49203588796885,83.70796411203116 159.60000000000002,92.49203588796883 147.7079641120312,92.6","160.17158887738577,83.6 171.82841112261423,83.77158887738577 172.0,92.42841112261422 160.17158887738577,92.6","172.6817830957893,83.6 184.1182169042107,83.8817830957893 184.4,92.31821690421069 172.6817830957893,92.6","36.072278988694954,93.0 47.927721011305046,93.07227898869496 48.0,101.92772101130504 36.072278988694954,102.0","48.59572839102313,93.0 60.20427160897687,93.19572839102314 60.4,101.80427160897686 48.59572839102313,102.0","61.09378967491834,93.0 72.50621032508165,93.29378967491834 72.8,101.70621032508166 61.09378967491834,102.0","73.22517853119874,93.0 85.17482146880127,93.02517853119873 85.2,101.97482146880127 73.22517853119874,102.0","85.62944448337981,93.0 97.57055551662017,93.02944448337982 97.6,101.97055551662018 85.62944448337981,102.0","98.25210449186562,93.0 109.74789550813438,93.25210449186562 110.0,101.74789550813438 98.25210449186562,102.0","110.53032591200257,93.0 122.26967408799744,93.13032591200256 122.4,101.86967408799744 110.53032591200257,102.0","123.02823756068294,93.0 134.57176243931707,93.22823756068294 134.8,101.77176243931706 123.02823756068294,102.0","135.2767053162037,93.0 147.12329468379627,93.0767053162037 147.2,101.9232946837963 135.2767053162037,102.0","147.85677410283256,93.0 159.34322589716749,93.25677410283255 159.60000000000002,101.74322589716745 147.85677410283256,102.0","160.19872169007408,93.0 171.80127830992592,93.19872169007407 172.0,101.80127830992593 160.19872169007408,102.0","172.57342212124487,93.0 184.22657787875514,93.17342212124485 184.4,101.82657787875515 172.57342212124487,102.0","36.239226405355076,102.4 47.760773594644924,102.63922640535507 48.0,111.16077359464494 36.239226405355076,111.4","48.4517824131019,102.4 60.348217586898095,102.45178241310191 60.4,111.3482175868981 48.4517824131019,111.4","61.03401147500052,102.4 72.56598852499947,102.63401147500053 72.8,111.16598852499948 61.03401147500052,111.4","73.22569866749281,102.4 85.1743013325072,102.42569866749281 85.2,111.3743013325072 73.22569866749281,111.4","85.88012793280988,102.4 97.3198720671901,102.6801279328099 97.6,111.11987206719012 85.88012793280988,111.4","98.05066438630818,102.4 109.94933561369182,102.45066438630819 110.0,111.34933561369182 98.05066438630818,111.4","110.49357489842089,102.4 122.30642510157912,102.49357489842089 122.4,111.30642510157912 110.49357489842089,111.4"];
+const BLOCKS = {"A":{"cx":107.45,"cy":76.92,"count":79,"types":{"residential":68,"C":2,"CR":3,"UT":2,"P":2,"OS":2}}};
+const ESTATE_NAME = "Tomorrow Is Here Estate";
+const ESTATE_LOC = "Akpuoga Nike, Enugu East";
+const ESTATE_INITIALS = "TH";
+const SVG_W = 600, SVG_H = 400;
+
+// ═══ STATUS & TYPE COLORS ═══
+const SC = {
+  available: {fill:'#22c55e',fillOp:.72,stroke:'#15803d',strokeOp:.85},
+  sold:      {fill:'#ef4444',fillOp:.65,stroke:'#b91c1c',strokeOp:.8},
+  reserved:  {fill:'#eab308',fillOp:.65,stroke:'#a16207',strokeOp:.8}
+};
+const TC = {
+  CR:  {fill:'#3b82f6',fillOp:.55,stroke:'#1d4ed8',strokeOp:.7},
+  C:   {fill:'#8b5cf6',fillOp:.55,stroke:'#6d28d9',strokeOp:.7},
+  IN:  {fill:'#f97316',fillOp:.55,stroke:'#c2410c',strokeOp:.7},
+  UT:  {fill:'#a78bfa',fillOp:.45,stroke:'#7c3aed',strokeOp:.6},
+  OS:  {fill:'#34d399',fillOp:.4,stroke:'#059669',strokeOp:.6},
+  P:   {fill:'#f472b6',fillOp:.45,stroke:'#db2777',strokeOp:.6},
+  SP:  {fill:'#fbbf24',fillOp:.5,stroke:'#d97706',strokeOp:.7}
+};
+function gc(p){ const t=p.t.toUpperCase(); return TC[t]||SC[p.s]||SC.available; }
+function fmt(n){ return '\u20A6'+n.toLocaleString(); }
+function tn(t){ const m={residential:'Residential',CR:'Commercial/Residential',C:'Commercial',IN:'Industrial',UT:'Utility',OS:'Open Space',P:'Public Use',SP:'Special'}; return m[t]||t; }
+
+// ═══ PAN & ZOOM ═══
+const root=document.getElementById('map-root'), wrap=document.getElementById('wrap');
+let scale=1,panX=0,panY=0,isDragging=false,dragMoved=false,dragStart={x:0,y:0};
+let selIdx=-1,activeBlock=null,statusFilter='all';
+const plotLayer=document.getElementById('plot-layer');
+const blockLabels=document.getElementById('block-labels');
+
+function applyTransform(){
+  wrap.style.transform=`translate(${panX}px,${panY}px) scale(${scale})`;
+  const pct=document.querySelector('.zoom-pct');
+  if(pct) pct.textContent=Math.round(scale*100)+'%';
+}
+function zoomAt(cx,cy,factor){
+  const ns=Math.max(.3,Math.min(25,scale*factor));
+  panX=cx-(cx-panX)*(ns/scale);
+  panY=cy-(cy-panY)*(ns/scale);
+  scale=ns;
+  applyTransform();
+}
+function fitView(){
+  const vw=window.innerWidth,vh=window.innerHeight;
+  scale=Math.min(vw/SVG_W,vh/SVG_H)*.95;
+  panX=(vw-SVG_W*scale)/2;
+  panY=(vh-SVG_H*scale)/2;
+  applyTransform();
+}
+
+// Mouse wheel
+root.addEventListener('wheel',e=>{
+  e.preventDefault();
+  zoomAt(e.clientX,e.clientY,e.deltaY<0?1.12:1/1.12);
+},{passive:false});
+
+// Mouse drag
+root.addEventListener('mousedown',e=>{
+  if(e.button!==0)return;
+  isDragging=true;dragMoved=false;
+  dragStart={x:e.clientX-panX,y:e.clientY-panY};
+  root.classList.add('dragging');
+});
+window.addEventListener('mousemove',e=>{
+  if(!isDragging)return;
+  const dx=e.clientX-dragStart.x-panX,dy=e.clientY-dragStart.y-panY;
+  if(Math.abs(dx)>3||Math.abs(dy)>3) dragMoved=true;
+  panX=e.clientX-dragStart.x;
+  panY=e.clientY-dragStart.y;
+  applyTransform();
+});
+window.addEventListener('mouseup',()=>{
+  isDragging=false;
+  root.classList.remove('dragging');
+});
+
+// Touch
+let lastTouchDist=0;
+root.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){
+    isDragging=true;dragMoved=false;
+    dragStart={x:e.touches[0].clientX-panX,y:e.touches[0].clientY-panY};
+  } else if(e.touches.length===2){
+    lastTouchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+  }
+},{passive:false});
+root.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(e.touches.length===1&&isDragging){
+    const dx=e.touches[0].clientX-dragStart.x-panX;
+    const dy=e.touches[0].clientY-dragStart.y-panY;
+    if(Math.abs(dx)>3||Math.abs(dy)>3) dragMoved=true;
+    panX=e.touches[0].clientX-dragStart.x;
+    panY=e.touches[0].clientY-dragStart.y;
+    applyTransform();
+  } else if(e.touches.length===2){
+    const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    if(lastTouchDist>0){
+      const cx=(e.touches[0].clientX+e.touches[1].clientX)/2;
+      const cy=(e.touches[0].clientY+e.touches[1].clientY)/2;
+      zoomAt(cx,cy,d/lastTouchDist);
+    }
+    lastTouchDist=d;
+  }
+},{passive:false});
+root.addEventListener('touchend',()=>{ isDragging=false;lastTouchDist=0; });
+
+// Double click
+root.addEventListener('dblclick',e=>{ zoomAt(e.clientX,e.clientY,2.5); });
+
+// Keyboard
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT')return;
+  switch(e.key){
+    case'+':case'=':zoomAt(window.innerWidth/2,window.innerHeight/2,1.3);break;
+    case'-':zoomAt(window.innerWidth/2,window.innerHeight/2,1/1.3);break;
+    case'0':fitView();break;
+    case'Escape':closePanel();break;
+    case'ArrowUp':panY+=60;applyTransform();break;
+    case'ArrowDown':panY-=60;applyTransform();break;
+    case'ArrowLeft':panX+=60;applyTransform();break;
+    case'ArrowRight':panX-=60;applyTransform();break;
+  }
+});
+
+// ═══ RENDER PLOTS ═══
+function renderPlots(){
+  PLOTS.forEach((p,i)=>{
+    const poly=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    poly.setAttribute('points',POLYS[i]);
+    poly.setAttribute('data-idx',i);
+    poly.classList.add('plot-poly');
+    const c=gc(p);
+    poly.setAttribute('fill',c.fill);
+    poly.setAttribute('fill-opacity',c.fillOp);
+    poly.setAttribute('stroke',c.stroke);
+    poly.setAttribute('stroke-opacity',c.strokeOp);
+    poly.setAttribute('stroke-width','0.5');
+    // Hide if filtered
+    if(activeBlock&&p.b!==activeBlock) poly.style.display='none';
+    if(statusFilter!=='all'&&p.s!==statusFilter) poly.style.display='none';
+    plotLayer.appendChild(poly);
+  });
+}
+
+// ═══ RENDER BLOCK LABELS ═══
+function renderBlockLabels(){
+  Object.entries(BLOCKS).forEach(([id,b])=>{
+    const txt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    txt.setAttribute('x',b.cx);
+    txt.setAttribute('y',b.cy);
+    txt.setAttribute('text-anchor','middle');
+    txt.setAttribute('dominant-baseline','central');
+    txt.classList.add('block-label');
+    const fs=b.count>200?16:b.count>50?14:12;
+    txt.setAttribute('font-size',fs);
+    txt.textContent='Block '+id;
+    blockLabels.appendChild(txt);
+  });
+}
+
+// ═══ TOOLTIP ═══
+const tip=document.getElementById('tip');
+function showTip(e,p){
+  tip.innerHTML=`<div class="tip-head"><span class="tip-id">${p.i}</span><span class="tip-badge ${p.s}">${p.s}</span></div><div class="tip-meta">${tn(p.t)} \u00b7 ${p.z}m\u00b2 \u00b7 Block ${p.b}</div>`;
+  tip.classList.add('on');
+  const x=Math.min(e.clientX+16,window.innerWidth-230);
+  const y=Math.min(e.clientY+16,window.innerHeight-80);
+  tip.style.left=x+'px';tip.style.top=y+'px';
+}
+function hideTip(){ tip.classList.remove('on'); }
+
+// ═══ DETAIL PANEL ═══
+const panel=document.getElementById('panel');
+function openPanel(p){
+  const hc=p.s==='available'?'rgba(34,197,94,.15)':p.s==='sold'?'rgba(239,68,68,.12)':'rgba(234,179,8,.12)';
+  panel.innerHTML=`
+    <button class="panel-close" onclick="closePanel()">\u2715</button>
+    <div class="panel-hero" style="--hc:${hc}">
+      <div class="label">Block ${p.b} \u00b7 ${tn(p.t)}</div>
+      <div class="title">${p.i}</div>
+      <div class="subtitle">${ESTATE_NAME} \u2014 ${ESTATE_LOC}</div>
+    </div>
+    <div class="panel-body">
+      <div class="pd-status ${p.s}"><span class="dot"></span>${p.s}</div>
+      <div class="pd-grid">
+        <div class="pd-card"><div class="lbl">Type</div><div class="val">${tn(p.t)}</div></div>
+        <div class="pd-card"><div class="lbl">Size</div><div class="val">${p.z} m\u00b2</div></div>
+        <div class="pd-card"><div class="lbl">Block</div><div class="val">${p.b}</div></div>
+        <div class="pd-card"><div class="lbl">Plot No.</div><div class="val">${p.n}</div></div>
+        <div class="pd-card wide price"><div class="lbl">Price</div><div class="val">${fmt(p.p)}</div></div>
+        <div class="pd-card"><div class="lbl">Estate</div><div class="val">${ESTATE_NAME}</div></div>
+        <div class="pd-card"><div class="lbl">Area</div><div class="val">${ESTATE_LOC.split(',')[0]}</div></div>
+      </div>
+      <button class="enquire-btn ${p.s==='available'?'active':'disabled'}" ${p.s!=='available'?'disabled':''}>
+        ${p.s==='available'?'Enquire Now':p.s==='sold'?'Sold':'Reserved'}
+      </button>
+    </div>`;
+  panel.classList.add('open');
+}
+function closePanel(){
+  panel.classList.remove('open');
+  if(selIdx>=0){
+    const prev=plotLayer.children[selIdx];
+    if(prev) prev.classList.remove('selected');
+    selIdx=-1;
+  }
+}
+
+function selectPlot(idx){
+  if(selIdx>=0){
+    const prev=plotLayer.children[selIdx];
+    if(prev) prev.classList.remove('selected');
+  }
+  selIdx=idx;
+  const el=plotLayer.children[idx];
+  if(el) el.classList.add('selected');
+  openPanel(PLOTS[idx]);
+  // Center on plot
+  const p=PLOTS[idx];
+  const cx=window.innerWidth/2, cy=window.innerHeight/2;
+  if(scale<3){
+    const ns=5;
+    panX=cx-p.x*ns;
+    panY=cy-p.y*ns;
+    scale=ns;
+  }
+  applyTransform();
+}
+
+// Plot events
+plotLayer.addEventListener('click',e=>{
+  if(dragMoved) return;
+  const el=e.target.closest('.plot-poly');
+  if(!el) return;
+  selectPlot(parseInt(el.dataset.idx));
+});
+plotLayer.addEventListener('mousemove',e=>{
+  const el=e.target.closest('.plot-poly');
+  if(el) showTip(e,PLOTS[parseInt(el.dataset.idx)]);
+  else hideTip();
+});
+plotLayer.addEventListener('mouseleave',hideTip);
+
+// Click empty space to close
+root.addEventListener('click',e=>{
+  if(dragMoved) return;
+  if(!e.target.closest('.plot-poly')&&!e.target.closest('#panel')){
+    closePanel();
+  }
+});
+
+// ═══ UI RENDERING ═══
+function renderUI(){
+  const counts={available:0,sold:0,reserved:0};
+  PLOTS.forEach(p=>counts[p.s]++);
+  const total=PLOTS.length;
+
+  // Top bar
+  const topbar=document.createElement('div');
+  topbar.id='topbar';
+  topbar.innerHTML=`
+    <div class="brand">
+      <div class="brand-mark">${ESTATE_INITIALS}</div>
+      <div><h1>${ESTATE_NAME}</h1><div class="sub">${ESTATE_LOC}</div></div>
+    </div>
+    <div class="legend" id="legend">
+      <div class="leg-chip active" data-f="all"><div class="leg-dot" style="background:linear-gradient(135deg,#22c55e,#3b82f6)"></div>All<span class="leg-num">${total}</span></div>
+      <div class="leg-chip" data-f="available"><div class="leg-dot" style="background:#22c55e"></div>Available<span class="leg-num">${counts.available}</span></div>
+      <div class="leg-chip" data-f="sold"><div class="leg-dot" style="background:#ef4444"></div>Sold<span class="leg-num">${counts.sold}</span></div>
+      <div class="leg-chip" data-f="reserved"><div class="leg-dot" style="background:#eab308"></div>Reserved<span class="leg-num">${counts.reserved}</span></div>
+    </div>`;
+  document.body.appendChild(topbar);
+
+  // Legend filter
+  document.getElementById('legend').addEventListener('click',e=>{
+    const chip=e.target.closest('.leg-chip');
+    if(!chip) return;
+    statusFilter=chip.dataset.f;
+    document.querySelectorAll('.leg-chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    // Re-filter
+    Array.from(plotLayer.children).forEach((el,i)=>{
+      const p=PLOTS[i];
+      const blockOk=!activeBlock||p.b===activeBlock;
+      const statusOk=statusFilter==='all'||p.s===statusFilter;
+      el.style.display=(blockOk&&statusOk)?'':'none';
+    });
+  });
+
+  // Search
+  const sw=document.createElement('div');
+  sw.className='search-wrap';
+  sw.innerHTML=`<div class="search-icon"><svg><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><input id="search" placeholder="Search plot e.g. ${Object.keys(BLOCKS)[0]}-1, ${Object.keys(BLOCKS)[0]}-25...">`;
+  document.body.appendChild(sw);
+  const sr=document.createElement('div');
+  sr.className='search-results';sr.id='searchResults';
+  document.body.appendChild(sr);
+
+  document.getElementById('search').addEventListener('input',e=>{
+    const q=e.target.value.toUpperCase().trim();
+    if(!q){ sr.classList.remove('open');sr.innerHTML='';return; }
+    const matches=PLOTS.map((p,i)=>({...p,idx:i})).filter(p=>p.i.toUpperCase().includes(q)).slice(0,10);
+    if(!matches.length){ sr.classList.remove('open');sr.innerHTML='';return; }
+    sr.innerHTML=matches.map(p=>`<div class="sr-item" data-idx="${p.idx}"><div><span class="sr-id">${p.i}</span><span class="sr-block"> Block ${p.b}</span></div><span class="sr-badge ${p.s}">${p.s}</span></div>`).join('');
+    sr.classList.add('open');
+  });
+  sr.addEventListener('click',e=>{
+    const item=e.target.closest('.sr-item');
+    if(!item) return;
+    selectPlot(parseInt(item.dataset.idx));
+    sr.classList.remove('open');
+    document.getElementById('search').value='';
+  });
+
+  // Block filters
+  const bKeys=Object.keys(BLOCKS);
+  if(bKeys.length>1){
+    const bf=document.createElement('div');
+    bf.className='block-filters';
+    bf.innerHTML=`<button class="bf-rst" id="bfReset">All Blocks</button>`+bKeys.map(k=>`<button class="bf-btn" data-b="${k}">Block ${k}<span class="bf-cnt">${BLOCKS[k].count}</span></button>`).join('');
+    document.body.appendChild(bf);
+
+    bf.addEventListener('click',e=>{
+      const btn=e.target.closest('.bf-btn');
+      const rst=e.target.closest('.bf-rst');
+      if(btn){
+        const b=btn.dataset.b;
+        activeBlock=activeBlock===b?null:b;
+        document.querySelectorAll('.bf-btn').forEach(x=>x.classList.remove('on'));
+        if(activeBlock) btn.classList.add('on');
+        // Filter & zoom
+        Array.from(plotLayer.children).forEach((el,i)=>{
+          const p=PLOTS[i];
+          const blockOk=!activeBlock||p.b===activeBlock;
+          const statusOk=statusFilter==='all'||p.s===statusFilter;
+          el.style.display=(blockOk&&statusOk)?'':'none';
+        });
+        if(activeBlock&&BLOCKS[activeBlock]){
+          const bl=BLOCKS[activeBlock];
+          const cx=window.innerWidth/2, cy=window.innerHeight/2;
+          scale=6;
+          panX=cx-bl.cx*scale;
+          panY=cy-bl.cy*scale;
+          applyTransform();
+        }
+      }
+      if(rst){
+        activeBlock=null;
+        document.querySelectorAll('.bf-btn').forEach(x=>x.classList.remove('on'));
+        Array.from(plotLayer.children).forEach((el,i)=>{
+          const p=PLOTS[i];
+          const statusOk=statusFilter==='all'||p.s===statusFilter;
+          el.style.display=statusOk?'':'none';
+        });
+        fitView();
+      }
+    });
+  }
+
+  // Stats
+  const stats=document.createElement('div');
+  stats.className='stats';
+  stats.innerHTML=`
+    <div class="stat-item"><div class="stat-num" style="color:#22c55e">${counts.available}</div><div class="stat-lbl">Available</div></div>
+    <div class="stat-item"><div class="stat-num" style="color:#ef4444">${counts.sold}</div><div class="stat-lbl">Sold</div></div>
+    <div class="stat-item"><div class="stat-num" style="color:#eab308">${counts.reserved}</div><div class="stat-lbl">Reserved</div></div>
+    <div class="stat-item"><div class="stat-num">${total}</div><div class="stat-lbl">Total</div></div>`;
+  document.body.appendChild(stats);
+
+  // Zoom controls
+  const ctrls=document.createElement('div');
+  ctrls.className='ctrls';
+  ctrls.innerHTML=`
+    <button class="ctrl-btn" id="zIn"><svg><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+    <button class="ctrl-btn" id="zOut"><svg><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+    <button class="ctrl-btn" id="zFit"><svg><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>`;
+  document.body.appendChild(ctrls);
+  document.getElementById('zIn').addEventListener('click',()=>zoomAt(window.innerWidth/2,window.innerHeight/2,1.4));
+  document.getElementById('zOut').addEventListener('click',()=>zoomAt(window.innerWidth/2,window.innerHeight/2,1/1.4));
+  document.getElementById('zFit').addEventListener('click',fitView);
+
+  // Zoom percentage
+  const zp=document.createElement('div');
+  zp.className='zoom-pct';zp.textContent='100%';
+  document.body.appendChild(zp);
+
+  // Onboarding
+  const ob=document.createElement('div');
+  ob.className='onboard';
+  ob.innerHTML=`<h2>${ESTATE_NAME}</h2><div class="plots">${total} Interactive Plots</div><div class="hints"><div class="hint"><div class="hk">Scroll</div><div class="hv">Zoom</div></div><div class="hint"><div class="hk">Drag</div><div class="hv">Pan</div></div><div class="hint"><div class="hk">Click</div><div class="hv">Select</div></div></div>`;
+  document.body.appendChild(ob);
+}
+
+// ═══ INIT ═══
+renderPlots();
+renderBlockLabels();
+renderUI();
+fitView();
+</script>
+</body>
+</html>

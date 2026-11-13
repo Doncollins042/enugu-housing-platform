@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Satellite Estate — Interactive Survey Map</title>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,300;6..72,400;6..72,500;6..72,600;6..72,700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;-webkit-tap-highlight-color:transparent}
+body{font-family:'Inter',system-ui,sans-serif;background:#0a0a0a;color:#e5e5e5}
+#map-root{position:fixed;inset:0;overflow:hidden;cursor:grab;touch-action:none;background:#0a0a0a}
+#map-root.dragging{cursor:grabbing}
+#wrap{transform-origin:0 0;will-change:transform}
+#wrap svg{display:block}
+.plot-poly{cursor:pointer;transition:fill-opacity .12s,stroke-width .12s,filter .12s;vector-effect:non-scaling-stroke}
+.plot-poly:hover{fill-opacity:.92!important;stroke-width:1.2!important;filter:brightness(1.2) drop-shadow(0 0 3px rgba(255,255,255,.15))}
+.plot-poly.selected{stroke:#c9a84c!important;stroke-width:2!important;stroke-opacity:1!important;filter:drop-shadow(0 0 6px rgba(201,168,76,.4))!important;animation:plotPulse 2s ease infinite}
+@keyframes plotPulse{0%,100%{filter:drop-shadow(0 0 6px rgba(201,168,76,.4))}50%{filter:drop-shadow(0 0 12px rgba(201,168,76,.6))}}
+.block-label{font-family:'Newsreader',serif;font-weight:600;fill:rgba(255,255,255,.08);pointer-events:none;user-select:none}
+#topbar{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:linear-gradient(180deg,rgba(10,10,10,.98) 0%,rgba(10,10,10,.85) 65%,transparent 100%);pointer-events:none}
+#topbar>*{pointer-events:auto}
+.brand{display:flex;align-items:center;gap:14px}
+.brand-mark{width:42px;height:42px;border-radius:10px;background:linear-gradient(145deg,#c9a84c,#8a6d2f);display:flex;align-items:center;justify-content:center;font-family:'Newsreader',serif;font-weight:700;font-size:17px;color:#0a0a0a;box-shadow:0 2px 12px rgba(201,168,76,.25)}
+.brand h1{font-family:'Newsreader',serif;font-size:20px;font-weight:600;color:#e8cc6e;line-height:1.1}
+.brand .sub{font-size:9px;color:rgba(255,255,255,.28);letter-spacing:2.5px;text-transform:uppercase;margin-top:2px;font-family:'Inter',sans-serif}
+.legend{display:flex;gap:2px;background:rgba(18,18,18,.94);border:1px solid rgba(255,255,255,.06);border-radius:26px;padding:4px 5px;backdrop-filter:blur(20px)}
+.leg-chip{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:22px;font-size:11px;font-weight:500;color:rgba(255,255,255,.6);cursor:pointer;transition:all .12s}
+.leg-chip:hover{background:rgba(255,255,255,.05)}
+.leg-chip.active{background:rgba(255,255,255,.06)}
+.leg-dot{width:10px;height:10px;border-radius:3px}
+.leg-num{font-weight:700;color:#fff;font-variant-numeric:tabular-nums;margin-left:2px}
+.search-wrap{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:55;display:flex;align-items:center;width:300px;background:rgba(18,18,18,.94);border:1px solid rgba(255,255,255,.08);border-radius:12px;backdrop-filter:blur(20px);overflow:hidden;transition:all .2s;box-shadow:0 4px 20px rgba(0,0,0,.3)}
+.search-wrap:focus-within{border-color:rgba(201,168,76,.3);box-shadow:0 4px 24px rgba(201,168,76,.1)}
+.search-icon{padding:0 4px 0 14px;color:rgba(255,255,255,.25);display:flex;align-items:center}
+.search-icon svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#search{flex:1;background:transparent;border:none;outline:none;color:#e5e5e5;font-family:'Inter',sans-serif;font-size:13px;padding:11px 14px 11px 8px}
+#search::placeholder{color:rgba(255,255,255,.2)}
+.search-results{position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:56;width:300px;background:rgba(14,14,14,.97);border:1px solid rgba(255,255,255,.08);border-radius:12px;max-height:260px;overflow-y:auto;display:none;backdrop-filter:blur(28px);box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.search-results.open{display:block}
+.sr-item{padding:10px 16px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:background .08s;border-bottom:1px solid rgba(255,255,255,.03)}
+.sr-item:last-child{border-bottom:none}
+.sr-item:hover{background:rgba(201,168,76,.08)}
+.sr-id{font-family:'Newsreader',serif;font-weight:600;font-size:14px;color:#e8cc6e}
+.sr-block{font-size:10px;color:rgba(255,255,255,.3)}
+.sr-badge{font-size:9px;font-weight:700;padding:2px 8px;border-radius:8px;text-transform:uppercase}
+.sr-badge.available{background:rgba(34,197,94,.1);color:#22c55e}
+.sr-badge.sold{background:rgba(239,68,68,.08);color:#ef4444}
+.sr-badge.reserved{background:rgba(234,179,8,.08);color:#eab308}
+.block-filters{position:fixed;top:62px;left:24px;z-index:50;display:flex;flex-wrap:wrap;gap:4px;max-width:420px}
+.bf-btn{padding:4px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.06);background:rgba(18,18,18,.85);color:rgba(255,255,255,.35);font-size:10px;font-weight:600;cursor:pointer;transition:all .12s;backdrop-filter:blur(12px);font-family:'Inter',sans-serif}
+.bf-btn:hover{background:rgba(201,168,76,.1);color:#e8cc6e;border-color:rgba(201,168,76,.2)}
+.bf-btn.on{background:rgba(201,168,76,.14);color:#e8cc6e;border-color:rgba(201,168,76,.25)}
+.bf-cnt{font-size:7px;color:rgba(255,255,255,.2);margin-left:2px;font-weight:400}
+.bf-rst{padding:4px 12px;border-radius:7px;border:1px solid rgba(201,168,76,.15);background:rgba(201,168,76,.08);color:#e8cc6e;font-size:10px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}
+.stats{position:fixed;bottom:20px;left:20px;z-index:50;display:flex;gap:1px;background:rgba(18,18,18,.92);border:1px solid rgba(255,255,255,.07);border-radius:14px;overflow:hidden;backdrop-filter:blur(24px)}
+.stat-item{padding:10px 18px;text-align:center;min-width:70px}
+.stat-item+.stat-item{border-left:1px solid rgba(255,255,255,.04)}
+.stat-num{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.stat-lbl{font-size:7px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.25);margin-top:2px}
+.ctrls{position:fixed;bottom:20px;right:20px;z-index:50;display:flex;flex-direction:column;gap:1px;background:rgba(18,18,18,.92);border:1px solid rgba(255,255,255,.07);border-radius:14px;overflow:hidden;backdrop-filter:blur(24px);box-shadow:0 8px 32px rgba(0,0,0,.3)}
+.ctrl-btn{width:46px;height:46px;background:transparent;border:none;color:rgba(255,255,255,.45);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .1s}
+.ctrl-btn:hover{background:rgba(255,255,255,.05);color:#fff}
+.ctrl-btn:active{transform:scale(.93)}
+.ctrl-btn+.ctrl-btn{border-top:1px solid rgba(255,255,255,.04)}
+.ctrl-btn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.zoom-pct{position:fixed;bottom:22px;right:78px;z-index:50;background:rgba(18,18,18,.85);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:7px 13px;font-size:11px;font-weight:600;color:rgba(255,255,255,.28);font-variant-numeric:tabular-nums;backdrop-filter:blur(20px)}
+#tip{position:fixed;z-index:200;pointer-events:none;opacity:0;transition:opacity .06s;background:rgba(14,14,14,.96);border:1px solid rgba(255,255,255,.09);border-radius:13px;padding:14px 18px;min-width:200px;box-shadow:0 16px 48px rgba(0,0,0,.5);backdrop-filter:blur(28px)}
+#tip.on{opacity:1}
+.tip-head{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.tip-id{font-family:'Newsreader',serif;font-size:17px;font-weight:600;color:#e8cc6e}
+.tip-badge{font-size:9px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:10px;text-transform:uppercase}
+.tip-badge.available{background:rgba(34,197,94,.12);color:#22c55e}
+.tip-badge.sold{background:rgba(239,68,68,.10);color:#ef4444}
+.tip-badge.reserved{background:rgba(234,179,8,.10);color:#eab308}
+.tip-meta{font-size:11px;color:rgba(255,255,255,.3);margin-top:5px}
+#panel{position:fixed;top:0;right:0;bottom:0;width:395px;z-index:100;background:rgba(12,12,12,.98);border-left:1px solid rgba(255,255,255,.06);backdrop-filter:blur(40px);transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-24px 0 64px rgba(0,0,0,.5)}
+#panel.open{transform:translateX(0)}
+.panel-close{position:absolute;top:14px;right:14px;width:36px;height:36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:10px;color:rgba(255,255,255,.35);font-size:16px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;transition:all .1s}
+.panel-close:hover{background:rgba(255,255,255,.08);color:#fff}
+.panel-hero{position:relative;padding:38px 28px 24px;background:radial-gradient(ellipse at 50% 0%,var(--hc,rgba(34,197,94,.15)) 0%,transparent 70%)}
+.panel-hero .label{font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.3);font-weight:500}
+.panel-hero .title{font-family:'Newsreader',serif;font-size:38px;font-weight:700;color:#e8cc6e;line-height:1.1;margin-top:4px}
+.panel-hero .subtitle{font-size:11px;color:rgba(255,255,255,.25);margin-top:6px}
+.panel-body{flex:1;overflow-y:auto;padding:0 24px 28px}
+.panel-body::-webkit-scrollbar{width:3px}
+.panel-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:4px}
+.pd-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.pd-card{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:14px 16px}
+.pd-card.wide{grid-column:1/-1}
+.pd-card .lbl{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.25);margin-bottom:5px}
+.pd-card .val{font-size:14px;font-weight:600;color:#e5e5e5}
+.pd-card.price{background:linear-gradient(135deg,rgba(201,168,76,.08),rgba(201,168,76,.03));border-color:rgba(201,168,76,.12)}
+.pd-card.price .val{font-family:'Newsreader',serif;font-size:26px;color:#e8cc6e}
+.pd-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:5px 14px;border-radius:10px;text-transform:uppercase;letter-spacing:.5px}
+.pd-status.available{background:rgba(34,197,94,.1);color:#22c55e}
+.pd-status.sold{background:rgba(239,68,68,.08);color:#ef4444}
+.pd-status.reserved{background:rgba(234,179,8,.08);color:#eab308}
+.pd-status .dot{width:8px;height:8px;border-radius:50%}
+.pd-status.available .dot{background:#22c55e}
+.pd-status.sold .dot{background:#ef4444}
+.pd-status.reserved .dot{background:#eab308}
+.enquire-btn{display:block;width:100%;margin-top:20px;padding:16px;border-radius:12px;border:none;font-family:'Inter',sans-serif;font-size:14px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:1px;transition:all .15s}
+.enquire-btn.active{background:linear-gradient(135deg,#c9a84c,#e8cc6e);color:#0a0a0a;box-shadow:0 4px 20px rgba(201,168,76,.3)}
+.enquire-btn.active:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(201,168,76,.4)}
+.enquire-btn.disabled{background:rgba(255,255,255,.04);color:rgba(255,255,255,.2);cursor:default}
+.onboard{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:300;text-align:center;animation:fadeOnboard 5.5s ease forwards;pointer-events:none}
+@keyframes fadeOnboard{0%{opacity:0;transform:translate(-50%,-50%) scale(.95)}8%{opacity:1;transform:translate(-50%,-50%) scale(1)}65%{opacity:1}100%{opacity:0}}
+.onboard h2{font-family:'Newsreader',serif;font-size:28px;color:#e8cc6e;font-weight:600}
+.onboard .plots{font-size:13px;color:rgba(255,255,255,.35);margin:6px 0 18px;letter-spacing:1px}
+.onboard .hints{display:flex;gap:12px;justify-content:center}
+.onboard .hint{background:rgba(18,18,18,.9);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 18px;backdrop-filter:blur(20px)}
+.onboard .hk{font-size:10px;font-weight:700;color:#c9a84c;letter-spacing:1px;text-transform:uppercase}
+.onboard .hv{font-size:10px;color:rgba(255,255,255,.3);margin-top:2px}
+@media(max-width:768px){
+  #topbar{padding:10px 14px;flex-direction:column;gap:8px;align-items:flex-start}
+  .legend{display:none}
+  .search-wrap{width:calc(100% - 28px);top:auto;bottom:76px}
+  .search-results{top:auto;bottom:112px;width:calc(100% - 28px)}
+  .block-filters{top:58px;left:10px;max-width:calc(100% - 20px)}
+  #panel{width:100%;height:75vh;top:auto;transform:translateY(100%);border-left:none;border-top:1px solid rgba(255,255,255,.06);border-radius:20px 20px 0 0}
+  #panel.open{transform:translateY(0)}
+  .stats{left:10px;bottom:10px}
+  .ctrls{right:10px;bottom:10px}
+  .zoom-pct{right:68px;bottom:12px}
+}
+</style>
+</head>
+<body>
+<div id="map-root">
+<div id="wrap">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 824.8000000000001 400" width="824.8000000000001" height="400">
+<rect width="824.8000000000001" height="400" fill="#111815"/>
+<rect x="28.0" y="28.0" width="173.70000000000002" height="107.7" rx="3" fill="rgba(255,255,255,.015)" stroke="rgba(255,255,255,.06)" stroke-width=".5"/>
+<rect x="222.20000000000002" y="28.0" width="173.70000000000002" height="107.7" rx="3" fill="rgba(255,255,255,.015)" stroke="rgba(255,255,255,.06)" stroke-width=".5"/>
+<rect x="416.40000000000003" y="28.0" width="173.70000000000002" height="107.7" rx="3" fill="rgba(255,255,255,.015)" stroke="rgba(255,255,255,.06)" stroke-width=".5"/>
+<rect x="610.6" y="28.0" width="173.70000000000002" height="107.7" rx="3" fill="rgba(255,255,255,.015)" stroke="rgba(255,255,255,.06)" stroke-width=".5"/>
+<g id="plot-layer"></g>
+<g id="block-labels"></g>
+</svg>
+</div>
+</div>
+
+<!-- Tooltip -->
+<div id="tip"></div>
+<!-- Detail Panel -->
+<div id="panel"></div>
+
+<script>
+// ═══ DATA ═══
+const PLOTS = [{"i":"A-1","b":"A","n":"1","t":"residential","s":"sold","p":4000000,"z":900,"x":42.0,"y":50.5},{"i":"A-2","b":"A","n":"2","t":"residential","s":"available","p":4500000,"z":600,"x":54.4,"y":50.5},{"i":"A-3","b":"A","n":"3","t":"residential","s":"available","p":3000000,"z":500,"x":66.8,"y":50.5},{"i":"A-4","b":"A","n":"4","t":"residential","s":"sold","p":3000000,"z":500,"x":79.2,"y":50.5},{"i":"A-5","b":"A","n":"5","t":"residential","s":"reserved","p":4000000,"z":600,"x":91.6,"y":50.5},{"i":"A-6","b":"A","n":"6","t":"residential","s":"available","p":4000000,"z":600,"x":104.0,"y":50.5},{"i":"A-7","b":"A","n":"7","t":"residential","s":"sold","p":4500000,"z":600,"x":116.4,"y":50.5},{"i":"A-8","b":"A","n":"8","t":"residential","s":"available","p":3000000,"z":500,"x":128.8,"y":50.5},{"i":"A-9","b":"A","n":"9","t":"residential","s":"reserved","p":3500000,"z":500,"x":141.2,"y":50.5},{"i":"A-10","b":"A","n":"10","t":"residential","s":"sold","p":4500000,"z":900,"x":153.6,"y":50.5},{"i":"A-11","b":"A","n":"11","t":"residential","s":"available","p":3000000,"z":500,"x":166.0,"y":50.5},{"i":"A-12","b":"A","n":"12","t":"residential","s":"available","p":5000000,"z":500,"x":178.4,"y":50.5},{"i":"A-13","b":"A","n":"13","t":"residential","s":"reserved","p":5000000,"z":900,"x":190.8,"y":50.5},{"i":"A-14","b":"A","n":"14","t":"residential","s":"reserved","p":5000000,"z":648,"x":42.0,"y":59.9},{"i":"A-15","b":"A","n":"15","t":"residential","s":"available","p":5000000,"z":648,"x":54.4,"y":59.9},{"i":"A-16","b":"A","n":"16","t":"residential","s":"reserved","p":3500000,"z":540,"x":66.8,"y":59.9},{"i":"A-C/1","b":"A","n":"C/1","t":"C","s":"sold","p":8000000,"z":540,"x":79.2,"y":59.9},{"i":"A-17","b":"A","n":"17","t":"residential","s":"sold","p":3000000,"z":500,"x":91.6,"y":59.9},{"i":"A-P/1","b":"A","n":"P/1","t":"P","s":"available","p":1500000,"z":648,"x":104.0,"y":59.9},{"i":"A-18","b":"A","n":"18","t":"residential","s":"available","p":2500000,"z":600,"x":116.4,"y":59.9},{"i":"A-C/2","b":"A","n":"C/2","t":"C","s":"sold","p":6500000,"z":540,"x":128.8,"y":59.9},{"i":"A-19","b":"A","n":"19","t":"residential","s":"available","p":2500000,"z":540,"x":141.2,"y":59.9},{"i":"A-20","b":"A","n":"20","t":"residential","s":"reserved","p":4000000,"z":540,"x":153.6,"y":59.9},{"i":"A-21","b":"A","n":"21","t":"residential","s":"available","p":5000000,"z":600,"x":166.0,"y":59.9},{"i":"A-22","b":"A","n":"22","t":"residential","s":"available","p":5000000,"z":450,"x":178.4,"y":59.9},{"i":"A-23","b":"A","n":"23","t":"residential","s":"available","p":3000000,"z":450,"x":190.8,"y":59.9},{"i":"A-24","b":"A","n":"24","t":"residential","s":"available","p":5000000,"z":600,"x":42.0,"y":69.3},{"i":"A-25","b":"A","n":"25","t":"residential","s":"available","p":3500000,"z":600,"x":54.4,"y":69.3},{"i":"A-26","b":"A","n":"26","t":"residential","s":"available","p":2500000,"z":600,"x":66.8,"y":69.3},{"i":"A-27","b":"A","n":"27","t":"residential","s":"sold","p":2500000,"z":540,"x":79.2,"y":69.3},{"i":"A-28","b":"A","n":"28","t":"residential","s":"available","p":3500000,"z":500,"x":91.6,"y":69.3},{"i":"A-29","b":"A","n":"29","t":"residential","s":"available","p":4000000,"z":500,"x":104.0,"y":69.3},{"i":"A-30","b":"A","n":"30","t":"residential","s":"available","p":4500000,"z":540,"x":116.4,"y":69.3},{"i":"A-31","b":"A","n":"31","t":"residential","s":"available","p":5000000,"z":450,"x":128.8,"y":69.3},{"i":"A-32","b":"A","n":"32","t":"residential","s":"reserved","p":5000000,"z":450,"x":141.2,"y":69.3},{"i":"A-33","b":"A","n":"33","t":"residential","s":"available","p":3000000,"z":450,"x":153.6,"y":69.3},{"i":"A-34","b":"A","n":"34","t":"residential","s":"sold","p":4000000,"z":600,"x":166.0,"y":69.3},{"i":"A-35","b":"A","n":"35","t":"residential","s":"sold","p":4000000,"z":648,"x":178.4,"y":69.3},{"i":"A-36","b":"A","n":"36","t":"residential","s":"sold","p":4000000,"z":648,"x":190.8,"y":69.3},{"i":"A-37","b":"A","n":"37","t":"residential","s":"available","p":3000000,"z":900,"x":42.0,"y":78.7},{"i":"A-UT/1","b":"A","n":"UT/1","t":"UT","s":"sold","p":1500000,"z":540,"x":54.4,"y":78.7},{"i":"A-38","b":"A","n":"38","t":"residential","s":"sold","p":3500000,"z":900,"x":66.8,"y":78.7},{"i":"A-39","b":"A","n":"39","t":"residential","s":"reserved","p":3000000,"z":900,"x":79.2,"y":78.7},{"i":"A-40","b":"A","n":"40","t":"residential","s":"available","p":4500000,"z":648,"x":91.6,"y":78.7},{"i":"A-41","b":"A","n":"41","t":"residential","s":"reserved","p":2500000,"z":450,"x":104.0,"y":78.7},{"i":"A-42","b":"A","n":"42","t":"residential","s":"sold","p":4500000,"z":600,"x":116.4,"y":78.7},{"i":"A-43","b":"A","n":"43","t":"residential","s":"available","p":2500000,"z":600,"x":128.8,"y":78.7},{"i":"A-44","b":"A","n":"44","t":"residential","s":"available","p":5000000,"z":648,"x":141.2,"y":78.7},{"i":"A-CR/1","b":"A","n":"CR/1","t":"CR","s":"available","p":6500000,"z":600,"x":153.6,"y":78.7},{"i":"A-45","b":"A","n":"45","t":"residential","s":"sold","p":5000000,"z":450,"x":166.0,"y":78.7},{"i":"A-46","b":"A","n":"46","t":"residential","s":"available","p":2500000,"z":500,"x":178.4,"y":78.7},{"i":"A-47","b":"A","n":"47","t":"residential","s":"available","p":5000000,"z":500,"x":190.8,"y":78.7},{"i":"A-48","b":"A","n":"48","t":"residential","s":"reserved","p":5000000,"z":900,"x":42.0,"y":88.1},{"i":"A-49","b":"A","n":"49","t":"residential","s":"available","p":4000000,"z":600,"x":54.4,"y":88.1},{"i":"A-50","b":"A","n":"50","t":"residential","s":"available","p":4500000,"z":450,"x":66.8,"y":88.1},{"i":"A-51","b":"A","n":"51","t":"residential","s":"available","p":2500000,"z":648,"x":79.2,"y":88.1},{"i":"A-52","b":"A","n":"52","t":"residential","s":"available","p":3000000,"z":540,"x":91.6,"y":88.1},{"i":"A-53","b":"A","n":"53","t":"residential","s":"available","p":3500000,"z":600,"x":104.0,"y":88.1},{"i":"A-54","b":"A","n":"54","t":"residential","s":"sold","p":5000000,"z":600,"x":116.4,"y":88.1},{"i":"A-55","b":"A","n":"55","t":"residential","s":"available","p":3500000,"z":600,"x":128.8,"y":88.1},{"i":"A-56","b":"A","n":"56","t":"residential","s":"sold","p":2500000,"z":900,"x":141.2,"y":88.1},{"i":"A-57","b":"A","n":"57","t":"residential","s":"sold","p":3000000,"z":900,"x":153.6,"y":88.1},{"i":"A-58","b":"A","n":"58","t":"residential","s":"available","p":3500000,"z":600,"x":166.0,"y":88.1},{"i":"A-CR/2","b":"A","n":"CR/2","t":"CR","s":"available","p":5000000,"z":450,"x":178.4,"y":88.1},{"i":"A-59","b":"A","n":"59","t":"residential","s":"sold","p":2500000,"z":600,"x":190.8,"y":88.1},{"i":"A-60","b":"A","n":"60","t":"residential","s":"available","p":4500000,"z":500,"x":42.0,"y":97.5},{"i":"A-61","b":"A","n":"61","t":"residential","s":"available","p":2500000,"z":450,"x":54.4,"y":97.5},{"i":"A-62","b":"A","n":"62","t":"residential","s":"sold","p":5000000,"z":600,"x":66.8,"y":97.5},{"i":"A-63","b":"A","n":"63","t":"residential","s":"available","p":5000000,"z":648,"x":79.2,"y":97.5},{"i":"A-64","b":"A","n":"64","t":"residential","s":"reserved","p":3000000,"z":600,"x":91.6,"y":97.5},{"i":"A-65","b":"A","n":"65","t":"residential","s":"reserved","p":3500000,"z":450,"x":104.0,"y":97.5},{"i":"A-66","b":"A","n":"66","t":"residential","s":"sold","p":4500000,"z":450,"x":116.4,"y":97.5},{"i":"A-67","b":"A","n":"67","t":"residential","s":"sold","p":3000000,"z":600,"x":128.8,"y":97.5},{"i":"A-68","b":"A","n":"68","t":"residential","s":"sold","p":4000000,"z":900,"x":141.2,"y":97.5},{"i":"A-69","b":"A","n":"69","t":"residential","s":"available","p":3500000,"z":450,"x":153.6,"y":97.5},{"i":"A-70","b":"A","n":"70","t":"residential","s":"available","p":5000000,"z":900,"x":166.0,"y":97.5},{"i":"A-71","b":"A","n":"71","t":"residential","s":"available","p":3500000,"z":900,"x":178.4,"y":97.5},{"i":"A-72","b":"A","n":"72","t":"residential","s":"available","p":3000000,"z":450,"x":190.8,"y":97.5},{"i":"A-73","b":"A","n":"73","t":"residential","s":"reserved","p":4500000,"z":540,"x":42.0,"y":106.9},{"i":"A-CR/3","b":"A","n":"CR/3","t":"CR","s":"available","p":5000000,"z":450,"x":54.4,"y":106.9},{"i":"A-74","b":"A","n":"74","t":"residential","s":"sold","p":5000000,"z":500,"x":66.8,"y":106.9},{"i":"A-75","b":"A","n":"75","t":"residential","s":"reserved","p":4000000,"z":450,"x":79.2,"y":106.9},{"i":"A-76","b":"A","n":"76","t":"residential","s":"available","p":3500000,"z":600,"x":91.6,"y":106.9},{"i":"A-77","b":"A","n":"77","t":"residential","s":"sold","p":4000000,"z":450,"x":104.0,"y":106.9},{"i":"A-78","b":"A","n":"78","t":"residential","s":"available","p":3000000,"z":648,"x":116.4,"y":106.9},{"i":"A-79","b":"A","n":"79","t":"residential","s":"reserved","p":5000000,"z":600,"x":128.8,"y":106.9},{"i":"A-80","b":"A","n":"80","t":"residential","s":"available","p":4000000,"z":450,"x":141.2,"y":106.9},{"i":"A-OS/1","b":"A","n":"OS/1","t":"OS","s":"available","p":2000000,"z":600,"x":153.6,"y":106.9},{"i":"A-81","b":"A","n":"81","t":"residential","s":"sold","p":5000000,"z":900,"x":166.0,"y":106.9},{"i":"A-82","b":"A","n":"82","t":"residential","s":"sold","p":2500000,"z":500,"x":178.4,"y":106.9},{"i":"A-83","b":"A","n":"83","t":"residential","s":"available","p":3000000,"z":540,"x":190.8,"y":106.9},{"i":"A-84","b":"A","n":"84","t":"residential","s":"available","p":3000000,"z":500,"x":42.0,"y":116.3},{"i":"A-85","b":"A","n":"85","t":"residential","s":"available","p":3000000,"z":450,"x":54.4,"y":116.3},{"i":"B-1","b":"B","n":"1","t":"residential","s":"reserved","p":4500000,"z":600,"x":236.2,"y":50.5},{"i":"B-2","b":"B","n":"2","t":"residential","s":"available","p":4500000,"z":500,"x":248.6,"y":50.5},{"i":"B-3","b":"B","n":"3","t":"residential","s":"sold","p":5000000,"z":900,"x":261.0,"y":50.5},{"i":"B-4","b":"B","n":"4","t":"residential","s":"sold","p":3500000,"z":600,"x":273.4,"y":50.5},{"i":"B-5","b":"B","n":"5","t":"residential","s":"reserved","p":4500000,"z":900,"x":285.8,"y":50.5},{"i":"B-6","b":"B","n":"6","t":"residential","s":"available","p":4500000,"z":450,"x":298.2,"y":50.5},{"i":"B-7","b":"B","n":"7","t":"residential","s":"reserved","p":2500000,"z":900,"x":310.6,"y":50.5},{"i":"B-8","b":"B","n":"8","t":"residential","s":"available","p":5000000,"z":648,"x":323.0,"y":50.5},{"i":"B-9","b":"B","n":"9","t":"residential","s":"sold","p":2500000,"z":450,"x":335.4,"y":50.5},{"i":"B-10","b":"B","n":"10","t":"residential","s":"available","p":4500000,"z":500,"x":347.8,"y":50.5},{"i":"B-11","b":"B","n":"11","t":"residential","s":"sold","p":5000000,"z":900,"x":360.2,"y":50.5},{"i":"B-P/1","b":"B","n":"P/1","t":"P","s":"sold","p":2500000,"z":648,"x":372.6,"y":50.5},{"i":"B-12","b":"B","n":"12","t":"residential","s":"reserved","p":4500000,"z":450,"x":385.0,"y":50.5},{"i":"B-13","b":"B","n":"13","t":"residential","s":"reserved","p":4000000,"z":450,"x":236.2,"y":59.9},{"i":"B-14","b":"B","n":"14","t":"residential","s":"sold","p":3000000,"z":900,"x":248.6,"y":59.9},{"i":"B-15","b":"B","n":"15","t":"residential","s":"reserved","p":4500000,"z":648,"x":261.0,"y":59.9},{"i":"B-16","b":"B","n":"16","t":"residential","s":"available","p":4500000,"z":900,"x":273.4,"y":59.9},{"i":"B-17","b":"B","n":"17","t":"residential","s":"available","p":2500000,"z":600,"x":285.8,"y":59.9},{"i":"B-18","b":"B","n":"18","t":"residential","s":"available","p":2500000,"z":500,"x":298.2,"y":59.9},{"i":"B-19","b":"B","n":"19","t":"residential","s":"available","p":4000000,"z":540,"x":310.6,"y":59.9},{"i":"B-20","b":"B","n":"20","t":"residential","s":"available","p":4500000,"z":600,"x":323.0,"y":59.9},{"i":"B-CR/1","b":"B","n":"CR/1","t":"CR","s":"sold","p":5000000,"z":500,"x":335.4,"y":59.9},{"i":"B-21","b":"B","n":"21","t":"residential","s":"sold","p":3000000,"z":500,"x":347.8,"y":59.9},{"i":"B-22","b":"B","n":"22","t":"residential","s":"available","p":2500000,"z":600,"x":360.2,"y":59.9},{"i":"B-23","b":"B","n":"23","t":"residential","s":"sold","p":4000000,"z":600,"x":372.6,"y":59.9},{"i":"B-24","b":"B","n":"24","t":"residential","s":"sold","p":5000000,"z":900,"x":385.0,"y":59.9},{"i":"B-C/1","b":"B","n":"C/1","t":"C","s":"sold","p":8000000,"z":600,"x":236.2,"y":69.3},{"i":"B-25","b":"B","n":"25","t":"residential","s":"available","p":3500000,"z":648,"x":248.6,"y":69.3},{"i":"B-26","b":"B","n":"26","t":"residential","s":"available","p":3000000,"z":648,"x":261.0,"y":69.3},{"i":"B-27","b":"B","n":"27","t":"residential","s":"reserved","p":5000000,"z":500,"x":273.4,"y":69.3},{"i":"B-28","b":"B","n":"28","t":"residential","s":"available","p":5000000,"z":540,"x":285.8,"y":69.3},{"i":"B-29","b":"B","n":"29","t":"residential","s":"sold","p":5000000,"z":500,"x":298.2,"y":69.3},{"i":"B-30","b":"B","n":"30","t":"residential","s":"sold","p":3000000,"z":648,"x":310.6,"y":69.3},{"i":"B-31","b":"B","n":"31","t":"residential","s":"reserved","p":2500000,"z":900,"x":323.0,"y":69.3},{"i":"B-32","b":"B","n":"32","t":"residential","s":"reserved","p":5000000,"z":540,"x":335.4,"y":69.3},{"i":"B-33","b":"B","n":"33","t":"residential","s":"sold","p":4500000,"z":540,"x":347.8,"y":69.3},{"i":"B-34","b":"B","n":"34","t":"residential","s":"available","p":4000000,"z":500,"x":360.2,"y":69.3},{"i":"B-35","b":"B","n":"35","t":"residential","s":"available","p":2500000,"z":500,"x":372.6,"y":69.3},{"i":"B-36","b":"B","n":"36","t":"residential","s":"available","p":3500000,"z":648,"x":385.0,"y":69.3},{"i":"B-37","b":"B","n":"37","t":"residential","s":"available","p":4500000,"z":648,"x":236.2,"y":78.7},{"i":"B-38","b":"B","n":"38","t":"residential","s":"reserved","p":3500000,"z":900,"x":248.6,"y":78.7},{"i":"B-39","b":"B","n":"39","t":"residential","s":"available","p":3500000,"z":500,"x":261.0,"y":78.7},{"i":"B-40","b":"B","n":"40","t":"residential","s":"reserved","p":4000000,"z":900,"x":273.4,"y":78.7},{"i":"B-41","b":"B","n":"41","t":"residential","s":"sold","p":2500000,"z":648,"x":285.8,"y":78.7},{"i":"B-42","b":"B","n":"42","t":"residential","s":"available","p":5000000,"z":500,"x":298.2,"y":78.7},{"i":"B-43","b":"B","n":"43","t":"residential","s":"reserved","p":2500000,"z":900,"x":310.6,"y":78.7},{"i":"B-44","b":"B","n":"44","t":"residential","s":"available","p":2500000,"z":450,"x":323.0,"y":78.7},{"i":"B-45","b":"B","n":"45","t":"residential","s":"available","p":2500000,"z":648,"x":335.4,"y":78.7},{"i":"B-46","b":"B","n":"46","t":"residential","s":"available","p":5000000,"z":648,"x":347.8,"y":78.7},{"i":"B-47","b":"B","n":"47","t":"residential","s":"reserved","p":2500000,"z":648,"x":360.2,"y":78.7},{"i":"B-48","b":"B","n":"48","t":"residential","s":"reserved","p":3000000,"z":500,"x":372.6,"y":78.7},{"i":"B-49","b":"B","n":"49","t":"residential","s":"available","p":3000000,"z":540,"x":385.0,"y":78.7},{"i":"B-50","b":"B","n":"50","t":"residential","s":"available","p":3500000,"z":900,"x":236.2,"y":88.1},{"i":"B-51","b":"B","n":"51","t":"residential","s":"available","p":4000000,"z":600,"x":248.6,"y":88.1},{"i":"B-52","b":"B","n":"52","t":"residential","s":"reserved","p":4500000,"z":600,"x":261.0,"y":88.1},{"i":"B-53","b":"B","n":"53","t":"residential","s":"available","p":4000000,"z":450,"x":273.4,"y":88.1},{"i":"B-54","b":"B","n":"54","t":"residential","s":"available","p":2500000,"z":600,"x":285.8,"y":88.1},{"i":"B-55","b":"B","n":"55","t":"residential","s":"sold","p":4000000,"z":450,"x":298.2,"y":88.1},{"i":"B-OS/1","b":"B","n":"OS/1","t":"OS","s":"available","p":1500000,"z":450,"x":310.6,"y":88.1},{"i":"B-56","b":"B","n":"56","t":"residential","s":"reserved","p":5000000,"z":540,"x":323.0,"y":88.1},{"i":"B-57","b":"B","n":"57","t":"residential","s":"reserved","p":5000000,"z":648,"x":335.4,"y":88.1},{"i":"B-58","b":"B","n":"58","t":"residential","s":"available","p":4000000,"z":648,"x":347.8,"y":88.1},{"i":"B-59","b":"B","n":"59","t":"residential","s":"sold","p":3000000,"z":900,"x":360.2,"y":88.1},{"i":"B-60","b":"B","n":"60","t":"residential","s":"sold","p":2500000,"z":450,"x":372.6,"y":88.1},{"i":"B-61","b":"B","n":"61","t":"residential","s":"available","p":3000000,"z":648,"x":385.0,"y":88.1},{"i":"B-62","b":"B","n":"62","t":"residential","s":"available","p":3000000,"z":900,"x":236.2,"y":97.5},{"i":"B-63","b":"B","n":"63","t":"residential","s":"reserved","p":3000000,"z":648,"x":248.6,"y":97.5},{"i":"B-64","b":"B","n":"64","t":"residential","s":"sold","p":5000000,"z":648,"x":261.0,"y":97.5},{"i":"B-65","b":"B","n":"65","t":"residential","s":"sold","p":4000000,"z":900,"x":273.4,"y":97.5},{"i":"B-66","b":"B","n":"66","t":"residential","s":"available","p":3000000,"z":600,"x":285.8,"y":97.5},{"i":"B-67","b":"B","n":"67","t":"residential","s":"available","p":4000000,"z":500,"x":298.2,"y":97.5},{"i":"B-68","b":"B","n":"68","t":"residential","s":"available","p":4500000,"z":900,"x":310.6,"y":97.5},{"i":"B-69","b":"B","n":"69","t":"residential","s":"sold","p":4500000,"z":648,"x":323.0,"y":97.5},{"i":"B-70","b":"B","n":"70","t":"residential","s":"reserved","p":4000000,"z":450,"x":335.4,"y":97.5},{"i":"B-71","b":"B","n":"71","t":"residential","s":"available","p":4500000,"z":900,"x":347.8,"y":97.5},{"i":"B-72","b":"B","n":"72","t":"residential","s":"available","p":4500000,"z":450,"x":360.2,"y":97.5},{"i":"B-73","b":"B","n":"73","t":"residential","s":"sold","p":4000000,"z":900,"x":372.6,"y":97.5},{"i":"B-74","b":"B","n":"74","t":"residential","s":"available","p":5000000,"z":450,"x":385.0,"y":97.5},{"i":"B-75","b":"B","n":"75","t":"residential","s":"available","p":2500000,"z":600,"x":236.2,"y":106.9},{"i":"B-76","b":"B","n":"76","t":"residential","s":"reserved","p":4000000,"z":648,"x":248.6,"y":106.9},{"i":"B-77","b":"B","n":"77","t":"residential","s":"available","p":4500000,"z":500,"x":261.0,"y":106.9},{"i":"B-78","b":"B","n":"78","t":"residential","s":"available","p":4500000,"z":540,"x":273.4,"y":106.9},{"i":"B-79","b":"B","n":"79","t":"residential","s":"sold","p":3500000,"z":540,"x":285.8,"y":106.9},{"i":"B-80","b":"B","n":"80","t":"residential","s":"available","p":5000000,"z":600,"x":298.2,"y":106.9},{"i":"B-81","b":"B","n":"81","t":"residential","s":"reserved","p":4500000,"z":500,"x":310.6,"y":106.9},{"i":"B-82","b":"B","n":"82","t":"residential","s":"sold","p":3000000,"z":450,"x":323.0,"y":106.9},{"i":"B-83","b":"B","n":"83","t":"residential","s":"available","p":4000000,"z":450,"x":335.4,"y":106.9},{"i":"B-84","b":"B","n":"84","t":"residential","s":"reserved","p":4500000,"z":900,"x":347.8,"y":106.9},{"i":"B-85","b":"B","n":"85","t":"residential","s":"available","p":2500000,"z":500,"x":360.2,"y":106.9},{"i":"B-86","b":"B","n":"86","t":"residential","s":"available","p":3500000,"z":540,"x":372.6,"y":106.9},{"i":"B-87","b":"B","n":"87","t":"residential","s":"available","p":4500000,"z":540,"x":385.0,"y":106.9},{"i":"B-88","b":"B","n":"88","t":"residential","s":"reserved","p":3000000,"z":600,"x":236.2,"y":116.3},{"i":"B-89","b":"B","n":"89","t":"residential","s":"available","p":4500000,"z":900,"x":248.6,"y":116.3},{"i":"B-90","b":"B","n":"90","t":"residential","s":"reserved","p":4000000,"z":648,"x":261.0,"y":116.3},{"i":"B-CR/2","b":"B","n":"CR/2","t":"CR","s":"available","p":5000000,"z":450,"x":273.4,"y":116.3},{"i":"C-1","b":"C","n":"1","t":"residential","s":"available","p":2500000,"z":900,"x":430.4,"y":50.5},{"i":"C-2","b":"C","n":"2","t":"residential","s":"sold","p":4000000,"z":648,"x":442.8,"y":50.5},{"i":"C-3","b":"C","n":"3","t":"residential","s":"available","p":2500000,"z":450,"x":455.2,"y":50.5},{"i":"C-4","b":"C","n":"4","t":"residential","s":"available","p":5000000,"z":900,"x":467.6,"y":50.5},{"i":"C-5","b":"C","n":"5","t":"residential","s":"reserved","p":3000000,"z":900,"x":480.0,"y":50.5},{"i":"C-6","b":"C","n":"6","t":"residential","s":"reserved","p":3500000,"z":450,"x":492.4,"y":50.5},{"i":"C-7","b":"C","n":"7","t":"residential","s":"sold","p":3000000,"z":500,"x":504.8,"y":50.5},{"i":"C-8","b":"C","n":"8","t":"residential","s":"available","p":3500000,"z":600,"x":517.2,"y":50.5},{"i":"C-9","b":"C","n":"9","t":"residential","s":"available","p":2500000,"z":450,"x":529.6,"y":50.5},{"i":"C-10","b":"C","n":"10","t":"residential","s":"available","p":4500000,"z":600,"x":542.0,"y":50.5},{"i":"C-11","b":"C","n":"11","t":"residential","s":"sold","p":2500000,"z":540,"x":554.4,"y":50.5},{"i":"C-12","b":"C","n":"12","t":"residential","s":"reserved","p":3500000,"z":648,"x":566.8,"y":50.5},{"i":"C-CR/1","b":"C","n":"CR/1","t":"CR","s":"available","p":8000000,"z":450,"x":430.4,"y":59.9},{"i":"C-13","b":"C","n":"13","t":"residential","s":"sold","p":3000000,"z":500,"x":442.8,"y":59.9},{"i":"C-14","b":"C","n":"14","t":"residential","s":"available","p":5000000,"z":450,"x":455.2,"y":59.9},{"i":"C-15","b":"C","n":"15","t":"residential","s":"sold","p":2500000,"z":540,"x":467.6,"y":59.9},{"i":"C-16","b":"C","n":"16","t":"residential","s":"sold","p":3000000,"z":540,"x":480.0,"y":59.9},{"i":"C-17","b":"C","n":"17","t":"residential","s":"available","p":2500000,"z":450,"x":492.4,"y":59.9},{"i":"C-18","b":"C","n":"18","t":"residential","s":"available","p":2500000,"z":900,"x":504.8,"y":59.9},{"i":"C-19","b":"C","n":"19","t":"residential","s":"reserved","p":4500000,"z":500,"x":517.2,"y":59.9},{"i":"C-20","b":"C","n":"20","t":"residential","s":"sold","p":5000000,"z":450,"x":529.6,"y":59.9},{"i":"C-CR/2","b":"C","n":"CR/2","t":"CR","s":"reserved","p":8000000,"z":648,"x":542.0,"y":59.9},{"i":"C-21","b":"C","n":"21","t":"residential","s":"available","p":4000000,"z":900,"x":554.4,"y":59.9},{"i":"C-22","b":"C","n":"22","t":"residential","s":"available","p":2500000,"z":450,"x":566.8,"y":59.9},{"i":"C-23","b":"C","n":"23","t":"residential","s":"available","p":4500000,"z":500,"x":430.4,"y":69.3},{"i":"C-24","b":"C","n":"24","t":"residential","s":"available","p":3000000,"z":648,"x":442.8,"y":69.3},{"i":"C-25","b":"C","n":"25","t":"residential","s":"sold","p":2500000,"z":500,"x":455.2,"y":69.3},{"i":"C-26","b":"C","n":"26","t":"residential","s":"available","p":2500000,"z":450,"x":467.6,"y":69.3},{"i":"C-27","b":"C","n":"27","t":"residential","s":"reserved","p":4500000,"z":648,"x":480.0,"y":69.3},{"i":"C-28","b":"C","n":"28","t":"residential","s":"sold","p":5000000,"z":648,"x":492.4,"y":69.3},{"i":"C-29","b":"C","n":"29","t":"residential","s":"available","p":3000000,"z":500,"x":504.8,"y":69.3},{"i":"C-UT/1","b":"C","n":"UT/1","t":"UT","s":"sold","p":2500000,"z":900,"x":517.2,"y":69.3},{"i":"C-30","b":"C","n":"30","t":"residential","s":"reserved","p":2500000,"z":600,"x":529.6,"y":69.3},{"i":"C-31","b":"C","n":"31","t":"residential","s":"available","p":4500000,"z":450,"x":542.0,"y":69.3},{"i":"C-C/1","b":"C","n":"C/1","t":"C","s":"sold","p":6500000,"z":600,"x":554.4,"y":69.3},{"i":"C-32","b":"C","n":"32","t":"residential","s":"sold","p":5000000,"z":500,"x":566.8,"y":69.3},{"i":"C-33","b":"C","n":"33","t":"residential","s":"available","p":5000000,"z":648,"x":430.4,"y":78.7},{"i":"C-34","b":"C","n":"34","t":"residential","s":"sold","p":4000000,"z":500,"x":442.8,"y":78.7},{"i":"C-35","b":"C","n":"35","t":"residential","s":"available","p":3000000,"z":600,"x":455.2,"y":78.7},{"i":"C-36","b":"C","n":"36","t":"residential","s":"available","p":4000000,"z":500,"x":467.6,"y":78.7},{"i":"C-37","b":"C","n":"37","t":"residential","s":"available","p":3500000,"z":540,"x":480.0,"y":78.7},{"i":"C-38","b":"C","n":"38","t":"residential","s":"available","p":3000000,"z":900,"x":492.4,"y":78.7},{"i":"C-39","b":"C","n":"39","t":"residential","s":"available","p":4000000,"z":900,"x":504.8,"y":78.7},{"i":"C-40","b":"C","n":"40","t":"residential","s":"reserved","p":4000000,"z":600,"x":517.2,"y":78.7},{"i":"C-41","b":"C","n":"41","t":"residential","s":"available","p":5000000,"z":540,"x":529.6,"y":78.7},{"i":"C-42","b":"C","n":"42","t":"residential","s":"available","p":2500000,"z":450,"x":542.0,"y":78.7},{"i":"C-43","b":"C","n":"43","t":"residential","s":"available","p":5000000,"z":500,"x":554.4,"y":78.7},{"i":"C-44","b":"C","n":"44","t":"residential","s":"available","p":4000000,"z":600,"x":566.8,"y":78.7},{"i":"C-45","b":"C","n":"45","t":"residential","s":"sold","p":2500000,"z":540,"x":430.4,"y":88.1},{"i":"C-46","b":"C","n":"46","t":"residential","s":"available","p":4500000,"z":648,"x":442.8,"y":88.1},{"i":"C-47","b":"C","n":"47","t":"residential","s":"available","p":3500000,"z":648,"x":455.2,"y":88.1},{"i":"C-48","b":"C","n":"48","t":"residential","s":"available","p":3500000,"z":600,"x":467.6,"y":88.1},{"i":"C-49","b":"C","n":"49","t":"residential","s":"reserved","p":5000000,"z":900,"x":480.0,"y":88.1},{"i":"C-50","b":"C","n":"50","t":"residential","s":"reserved","p":2500000,"z":600,"x":492.4,"y":88.1},{"i":"C-51","b":"C","n":"51","t":"residential","s":"available","p":2500000,"z":648,"x":504.8,"y":88.1},{"i":"C-52","b":"C","n":"52","t":"residential","s":"sold","p":3000000,"z":500,"x":517.2,"y":88.1},{"i":"C-53","b":"C","n":"53","t":"residential","s":"reserved","p":2500000,"z":600,"x":529.6,"y":88.1},{"i":"C-54","b":"C","n":"54","t":"residential","s":"sold","p":3500000,"z":450,"x":542.0,"y":88.1},{"i":"C-55","b":"C","n":"55","t":"residential","s":"sold","p":3000000,"z":648,"x":554.4,"y":88.1},{"i":"C-56","b":"C","n":"56","t":"residential","s":"sold","p":3500000,"z":500,"x":566.8,"y":88.1},{"i":"C-57","b":"C","n":"57","t":"residential","s":"available","p":2500000,"z":600,"x":430.4,"y":97.5},{"i":"C-58","b":"C","n":"58","t":"residential","s":"available","p":5000000,"z":500,"x":442.8,"y":97.5},{"i":"C-59","b":"C","n":"59","t":"residential","s":"available","p":4000000,"z":500,"x":455.2,"y":97.5},{"i":"C-60","b":"C","n":"60","t":"residential","s":"available","p":4000000,"z":450,"x":467.6,"y":97.5},{"i":"C-61","b":"C","n":"61","t":"residential","s":"sold","p":4000000,"z":450,"x":480.0,"y":97.5},{"i":"C-62","b":"C","n":"62","t":"residential","s":"reserved","p":3500000,"z":450,"x":492.4,"y":97.5},{"i":"C-63","b":"C","n":"63","t":"residential","s":"sold","p":3000000,"z":600,"x":504.8,"y":97.5},{"i":"C-64","b":"C","n":"64","t":"residential","s":"available","p":3500000,"z":900,"x":517.2,"y":97.5},{"i":"C-65","b":"C","n":"65","t":"residential","s":"available","p":2500000,"z":900,"x":529.6,"y":97.5},{"i":"C-66","b":"C","n":"66","t":"residential","s":"available","p":5000000,"z":500,"x":542.0,"y":97.5},{"i":"C-67","b":"C","n":"67","t":"residential","s":"available","p":4000000,"z":500,"x":554.4,"y":97.5},{"i":"C-68","b":"C","n":"68","t":"residential","s":"available","p":3500000,"z":450,"x":566.8,"y":97.5},{"i":"C-69","b":"C","n":"69","t":"residential","s":"available","p":5000000,"z":648,"x":430.4,"y":106.9},{"i":"C-70","b":"C","n":"70","t":"residential","s":"available","p":5000000,"z":600,"x":442.8,"y":106.9},{"i":"C-71","b":"C","n":"71","t":"residential","s":"reserved","p":4000000,"z":540,"x":455.2,"y":106.9},{"i":"C-CR/3","b":"C","n":"CR/3","t":"CR","s":"available","p":10000000,"z":500,"x":467.6,"y":106.9},{"i":"C-72","b":"C","n":"72","t":"residential","s":"reserved","p":4500000,"z":900,"x":480.0,"y":106.9},{"i":"C-73","b":"C","n":"73","t":"residential","s":"available","p":5000000,"z":540,"x":492.4,"y":106.9},{"i":"C-74","b":"C","n":"74","t":"residential","s":"available","p":3500000,"z":450,"x":504.8,"y":106.9},{"i":"C-75","b":"C","n":"75","t":"residential","s":"sold","p":4500000,"z":648,"x":517.2,"y":106.9},{"i":"C-76","b":"C","n":"76","t":"residential","s":"sold","p":3500000,"z":450,"x":529.6,"y":106.9},{"i":"C-77","b":"C","n":"77","t":"residential","s":"sold","p":4000000,"z":648,"x":542.0,"y":106.9},{"i":"C-OS/1","b":"C","n":"OS/1","t":"OS","s":"available","p":2500000,"z":600,"x":554.4,"y":106.9},{"i":"C-78","b":"C","n":"78","t":"residential","s":"sold","p":3000000,"z":500,"x":566.8,"y":106.9},{"i":"C-79","b":"C","n":"79","t":"residential","s":"reserved","p":3000000,"z":450,"x":430.4,"y":116.3},{"i":"C-80","b":"C","n":"80","t":"residential","s":"available","p":4000000,"z":600,"x":442.8,"y":116.3},{"i":"D-1","b":"D","n":"1","t":"residential","s":"available","p":4500000,"z":500,"x":624.6,"y":50.5},{"i":"D-2","b":"D","n":"2","t":"residential","s":"reserved","p":3500000,"z":540,"x":637.0,"y":50.5},{"i":"D-3","b":"D","n":"3","t":"residential","s":"sold","p":3500000,"z":540,"x":649.4,"y":50.5},{"i":"D-CR/1","b":"D","n":"CR/1","t":"CR","s":"available","p":8000000,"z":540,"x":661.8,"y":50.5},{"i":"D-4","b":"D","n":"4","t":"residential","s":"available","p":5000000,"z":540,"x":674.2,"y":50.5},{"i":"D-5","b":"D","n":"5","t":"residential","s":"reserved","p":2500000,"z":450,"x":686.6,"y":50.5},{"i":"D-6","b":"D","n":"6","t":"residential","s":"reserved","p":3500000,"z":540,"x":699.0,"y":50.5},{"i":"D-7","b":"D","n":"7","t":"residential","s":"available","p":4500000,"z":900,"x":711.4,"y":50.5},{"i":"D-8","b":"D","n":"8","t":"residential","s":"sold","p":2500000,"z":540,"x":723.8,"y":50.5},{"i":"D-9","b":"D","n":"9","t":"residential","s":"available","p":2500000,"z":900,"x":736.2,"y":50.5},{"i":"D-10","b":"D","n":"10","t":"residential","s":"sold","p":5000000,"z":500,"x":748.6,"y":50.5},{"i":"D-C/1","b":"D","n":"C/1","t":"C","s":"available","p":8000000,"z":500,"x":761.0,"y":50.5},{"i":"D-11","b":"D","n":"11","t":"residential","s":"sold","p":5000000,"z":900,"x":624.6,"y":59.9},{"i":"D-12","b":"D","n":"12","t":"residential","s":"available","p":4000000,"z":600,"x":637.0,"y":59.9},{"i":"D-13","b":"D","n":"13","t":"residential","s":"available","p":3500000,"z":500,"x":649.4,"y":59.9},{"i":"D-14","b":"D","n":"14","t":"residential","s":"available","p":3500000,"z":600,"x":661.8,"y":59.9},{"i":"D-15","b":"D","n":"15","t":"residential","s":"available","p":5000000,"z":600,"x":674.2,"y":59.9},{"i":"D-UT/1","b":"D","n":"UT/1","t":"UT","s":"sold","p":2000000,"z":900,"x":686.6,"y":59.9},{"i":"D-16","b":"D","n":"16","t":"residential","s":"reserved","p":3500000,"z":540,"x":699.0,"y":59.9},{"i":"D-17","b":"D","n":"17","t":"residential","s":"available","p":2500000,"z":450,"x":711.4,"y":59.9},{"i":"D-18","b":"D","n":"18","t":"residential","s":"sold","p":4000000,"z":648,"x":723.8,"y":59.9},{"i":"D-19","b":"D","n":"19","t":"residential","s":"available","p":4000000,"z":648,"x":736.2,"y":59.9},{"i":"D-20","b":"D","n":"20","t":"residential","s":"sold","p":4000000,"z":900,"x":748.6,"y":59.9},{"i":"D-21","b":"D","n":"21","t":"residential","s":"reserved","p":5000000,"z":500,"x":761.0,"y":59.9},{"i":"D-22","b":"D","n":"22","t":"residential","s":"available","p":3000000,"z":648,"x":624.6,"y":69.3},{"i":"D-23","b":"D","n":"23","t":"residential","s":"available","p":4000000,"z":900,"x":637.0,"y":69.3},{"i":"D-24","b":"D","n":"24","t":"residential","s":"available","p":2500000,"z":450,"x":649.4,"y":69.3},{"i":"D-25","b":"D","n":"25","t":"residential","s":"available","p":4000000,"z":500,"x":661.8,"y":69.3},{"i":"D-26","b":"D","n":"26","t":"residential","s":"available","p":4500000,"z":648,"x":674.2,"y":69.3},{"i":"D-27","b":"D","n":"27","t":"residential","s":"sold","p":3000000,"z":900,"x":686.6,"y":69.3},{"i":"D-28","b":"D","n":"28","t":"residential","s":"sold","p":3000000,"z":648,"x":699.0,"y":69.3},{"i":"D-29","b":"D","n":"29","t":"residential","s":"sold","p":3500000,"z":540,"x":711.4,"y":69.3},{"i":"D-30","b":"D","n":"30","t":"residential","s":"available","p":5000000,"z":500,"x":723.8,"y":69.3},{"i":"D-31","b":"D","n":"31","t":"residential","s":"available","p":3500000,"z":450,"x":736.2,"y":69.3},{"i":"D-32","b":"D","n":"32","t":"residential","s":"available","p":2500000,"z":600,"x":748.6,"y":69.3},{"i":"D-33","b":"D","n":"33","t":"residential","s":"available","p":4000000,"z":450,"x":761.0,"y":69.3},{"i":"D-34","b":"D","n":"34","t":"residential","s":"sold","p":4500000,"z":450,"x":624.6,"y":78.7},{"i":"D-35","b":"D","n":"35","t":"residential","s":"reserved","p":2500000,"z":648,"x":637.0,"y":78.7},{"i":"D-36","b":"D","n":"36","t":"residential","s":"available","p":5000000,"z":900,"x":649.4,"y":78.7},{"i":"D-37","b":"D","n":"37","t":"residential","s":"sold","p":4500000,"z":600,"x":661.8,"y":78.7},{"i":"D-38","b":"D","n":"38","t":"residential","s":"available","p":2500000,"z":450,"x":674.2,"y":78.7},{"i":"D-39","b":"D","n":"39","t":"residential","s":"available","p":3000000,"z":648,"x":686.6,"y":78.7},{"i":"D-40","b":"D","n":"40","t":"residential","s":"reserved","p":4500000,"z":900,"x":699.0,"y":78.7},{"i":"D-CR/2","b":"D","n":"CR/2","t":"CR","s":"available","p":5000000,"z":600,"x":711.4,"y":78.7},{"i":"D-41","b":"D","n":"41","t":"residential","s":"reserved","p":2500000,"z":900,"x":723.8,"y":78.7},{"i":"D-42","b":"D","n":"42","t":"residential","s":"sold","p":3000000,"z":600,"x":736.2,"y":78.7},{"i":"D-43","b":"D","n":"43","t":"residential","s":"reserved","p":4000000,"z":450,"x":748.6,"y":78.7},{"i":"D-44","b":"D","n":"44","t":"residential","s":"available","p":3000000,"z":450,"x":761.0,"y":78.7},{"i":"D-45","b":"D","n":"45","t":"residential","s":"reserved","p":3500000,"z":600,"x":624.6,"y":88.1},{"i":"D-46","b":"D","n":"46","t":"residential","s":"reserved","p":5000000,"z":500,"x":637.0,"y":88.1},{"i":"D-47","b":"D","n":"47","t":"residential","s":"available","p":2500000,"z":900,"x":649.4,"y":88.1},{"i":"D-48","b":"D","n":"48","t":"residential","s":"available","p":4000000,"z":648,"x":661.8,"y":88.1},{"i":"D-49","b":"D","n":"49","t":"residential","s":"available","p":5000000,"z":450,"x":674.2,"y":88.1},{"i":"D-50","b":"D","n":"50","t":"residential","s":"sold","p":4500000,"z":900,"x":686.6,"y":88.1},{"i":"D-51","b":"D","n":"51","t":"residential","s":"available","p":3500000,"z":540,"x":699.0,"y":88.1},{"i":"D-52","b":"D","n":"52","t":"residential","s":"sold","p":3500000,"z":600,"x":711.4,"y":88.1},{"i":"D-53","b":"D","n":"53","t":"residential","s":"reserved","p":2500000,"z":500,"x":723.8,"y":88.1},{"i":"D-54","b":"D","n":"54","t":"residential","s":"sold","p":5000000,"z":648,"x":736.2,"y":88.1},{"i":"D-P/1","b":"D","n":"P/1","t":"P","s":"reserved","p":2000000,"z":648,"x":748.6,"y":88.1},{"i":"D-55","b":"D","n":"55","t":"residential","s":"sold","p":3000000,"z":540,"x":761.0,"y":88.1},{"i":"D-56","b":"D","n":"56","t":"residential","s":"sold","p":3500000,"z":600,"x":624.6,"y":97.5},{"i":"D-57","b":"D","n":"57","t":"residential","s":"sold","p":4000000,"z":648,"x":637.0,"y":97.5},{"i":"D-58","b":"D","n":"58","t":"residential","s":"sold","p":3000000,"z":450,"x":649.4,"y":97.5},{"i":"D-59","b":"D","n":"59","t":"residential","s":"available","p":4000000,"z":450,"x":661.8,"y":97.5},{"i":"D-60","b":"D","n":"60","t":"residential","s":"available","p":2500000,"z":900,"x":674.2,"y":97.5},{"i":"D-61","b":"D","n":"61","t":"residential","s":"reserved","p":5000000,"z":540,"x":686.6,"y":97.5},{"i":"D-C/2","b":"D","n":"C/2","t":"C","s":"sold","p":5000000,"z":540,"x":699.0,"y":97.5},{"i":"D-62","b":"D","n":"62","t":"residential","s":"reserved","p":5000000,"z":648,"x":711.4,"y":97.5},{"i":"D-63","b":"D","n":"63","t":"residential","s":"sold","p":2500000,"z":900,"x":723.8,"y":97.5},{"i":"D-64","b":"D","n":"64","t":"residential","s":"sold","p":3500000,"z":600,"x":736.2,"y":97.5},{"i":"D-65","b":"D","n":"65","t":"residential","s":"available","p":3500000,"z":540,"x":748.6,"y":97.5},{"i":"D-66","b":"D","n":"66","t":"residential","s":"available","p":5000000,"z":500,"x":761.0,"y":97.5},{"i":"D-67","b":"D","n":"67","t":"residential","s":"sold","p":4000000,"z":500,"x":624.6,"y":106.9},{"i":"D-68","b":"D","n":"68","t":"residential","s":"reserved","p":2500000,"z":600,"x":637.0,"y":106.9},{"i":"D-69","b":"D","n":"69","t":"residential","s":"reserved","p":2500000,"z":540,"x":649.4,"y":106.9},{"i":"D-70","b":"D","n":"70","t":"residential","s":"available","p":2500000,"z":900,"x":661.8,"y":106.9},{"i":"D-OS/1","b":"D","n":"OS/1","t":"OS","s":"reserved","p":1500000,"z":450,"x":674.2,"y":106.9}];
+const POLYS = ["36.02636615815034,46.0 47.97363384184966,46.02636615815034 48.0,54.97363384184966 36.02636615815034,55.0","48.40577783582943,46.0 60.394222164170564,46.005777835829434 60.4,54.994222164170566 48.40577783582943,55.0","60.93351778091142,46.0 72.66648221908858,46.133517780911426 72.8,54.866482219088574 60.93351778091142,55.0","73.21364292231584,46.0 85.18635707768416,46.013642922315846 85.2,54.986357077684154 73.21364292231584,55.0","85.69262244816467,46.0 97.50737755183532,46.09262244816467 97.6,54.90737755183533 85.69262244816467,55.0","98.12154088469204,46.0 109.87845911530796,46.12154088469204 110.0,54.87845911530796 98.12154088469204,55.0","110.48787918908549,46.0 122.31212081091452,46.087879189085484 122.4,54.912120810914516 110.48787918908549,55.0","122.937523347875,46.0 134.662476652125,46.137523347875 134.8,54.862476652125 122.937523347875,55.0","135.35354066614207,46.0 147.0464593338579,46.153540666142085 147.2,54.846459333857915 135.35354066614207,55.0","147.63664918690603,46.0 159.56335081309402,46.03664918690599 159.60000000000002,54.96335081309401 147.63664918690603,55.0","160.238093473306,46.0 171.761906526694,46.23809347330602 172.0,54.76190652669398 160.238093473306,55.0","172.6290220524456,46.0 184.1709779475544,46.229022052445615 184.4,54.770977947554385 172.6290220524456,55.0","184.87588946424452,46.0 196.7241105357555,46.0758894642445 196.8,54.9241105357555 184.87588946424452,55.0","36.2681668712126,55.4 47.7318331287874,55.6681668712126 48.0,64.1318331287874 36.2681668712126,64.4","48.47485364892227,55.4 60.32514635107773,55.47485364892227 60.4,64.32514635107773 48.47485364892227,64.4","60.832283530274374,55.4 72.76771646972561,55.432283530274375 72.8,64.36771646972562 60.832283530274374,64.4","73.3253965555918,55.4 85.07460344440821,55.52539655559179 85.2,64.27460344440821 73.3253965555918,64.4","85.65924054385724,55.4 97.54075945614275,55.459240543857234 97.6,64.34075945614276 85.65924054385724,64.4","98.0310664445665,55.4 109.9689335554335,55.4310664445665 110.0,64.3689335554335 98.0310664445665,64.4","110.41513900933501,55.4 122.384860990665,55.415139009335 122.4,64.384860990665 110.41513900933501,64.4","123.05283855431384,55.4 134.54716144568616,55.652838554313846 134.8,64.14716144568617 123.05283855431384,64.4","135.21845700611053,55.4 147.18154299388945,55.41845700611055 147.2,64.38154299388945 135.21845700611053,64.4","147.7015274572235,55.4 159.49847254277654,55.50152745722347 159.60000000000002,64.29847254277654 147.7015274572235,64.4","160.0305455085626,55.4 171.9694544914374,55.43054550856259 172.0,64.36945449143742 160.0305455085626,64.4","172.6668289941597,55.4 184.13317100584032,55.66682899415968 184.4,64.13317100584032 172.6668289941597,64.4","184.92635473739725,55.4 196.67364526260278,55.52635473739724 196.8,64.27364526260276 184.92635473739725,64.4","36.14850006665181,64.8 47.85149993334819,64.94850006665182 48.0,73.65149993334818 36.14850006665181,73.8","48.67564196853633,64.8 60.124358031463665,65.07564196853633 60.4,73.52435803146366 48.67564196853633,73.8","60.83892875241611,64.8 72.76107124758389,64.83892875241611 72.8,73.76107124758389 60.83892875241611,73.8","73.2252686770708,64.8 85.1747313229292,64.8252686770708 85.2,73.7747313229292 73.2252686770708,73.8","85.71739711613695,64.8 97.48260288386304,64.91739711613695 97.6,73.68260288386304 85.71739711613695,73.8","98.06535075024928,64.8 109.93464924975072,64.86535075024928 110.0,73.73464924975072 98.06535075024928,73.8","110.54356450795616,64.8 122.25643549204385,64.94356450795615 122.4,73.65643549204384 110.54356450795616,73.8","122.9726795545924,64.8 134.6273204454076,64.9726795545924 134.8,73.62732044540759 122.9726795545924,73.8","135.2250821173302,64.8 147.17491788266977,64.82508211733021 147.2,73.77491788266978 135.2250821173302,73.8","147.87619863841292,64.8 159.32380136158713,65.07619863841289 159.60000000000002,73.5238013615871 147.87619863841292,73.8","160.14881896989246,64.8 171.85118103010754,64.94881896989246 172.0,73.65118103010754 160.14881896989246,73.8","172.67528378785894,64.8 184.12471621214107,65.07528378785892 184.4,73.52471621214107 172.67528378785894,73.8","184.97947864523562,64.8 196.6205213547644,64.9794786452356 196.8,73.62052135476439 184.97947864523562,73.8","36.06766833911233,74.2 47.93233166088767,74.26766833911233 48.0,83.13233166088767 36.06766833911233,83.2","48.5201896722793,74.2 60.279810327720696,74.32018967227931 60.4,83.0798103277207 48.5201896722793,83.2","60.94063623282887,74.2 72.65936376717113,74.34063623282887 72.8,83.05936376717113 60.94063623282887,83.2","73.45772114996218,74.2 84.94227885003782,74.45772114996218 85.2,82.94227885003782 73.45772114996218,83.2","85.78261848486731,74.2 97.41738151513267,74.38261848486732 97.6,83.01738151513268 85.78261848486731,83.2","98.22279068449576,74.2 109.77720931550424,74.42279068449577 110.0,82.97720931550424 98.22279068449576,83.2","110.40406323727659,74.2 122.39593676272342,74.20406323727659 122.4,83.19593676272342 110.40406323727659,83.2","122.83932538111732,74.2 134.7606746188827,74.23932538111733 134.8,83.16067461888268 122.83932538111732,83.2","135.214567289222,74.2 147.18543271077797,74.21456728922202 147.2,83.18543271077799 135.214567289222,83.2","147.7456941447274,74.2 159.45430585527265,74.34569414472737 159.60000000000002,83.05430585527263 147.7456941447274,83.2","160.1683762464092,74.2 171.8316237535908,74.3683762464092 172.0,83.03162375359081 160.1683762464092,83.2","172.68759224704914,74.2 184.11240775295087,74.48759224704915 184.4,82.91240775295086 172.68759224704914,83.2","184.8462773569979,74.2 196.75372264300213,74.24627735699788 196.8,83.15372264300213 184.8462773569979,83.2","36.08787644293416,83.6 47.91212355706584,83.68787644293415 48.0,92.51212355706583 36.08787644293416,92.6","48.443154893355,83.6 60.356845106645,83.643154893355 60.4,92.55684510664499 48.443154893355,92.6","61.07932011848697,83.6 72.52067988151302,83.87932011848697 72.8,92.32067988151302 61.07932011848697,92.6","73.49860105541715,83.6 84.90139894458285,83.89860105541715 85.2,92.30139894458284 73.49860105541715,92.6","85.60378679366582,83.6 97.59621320633417,83.60378679366582 97.6,92.59621320633417 85.60378679366582,92.6","98.24007285359102,83.6 109.75992714640898,83.84007285359101 110.0,92.35992714640898 98.24007285359102,92.6","110.46961263554277,83.6 122.33038736445724,83.66961263554276 122.4,92.53038736445723 110.46961263554277,92.6","122.82214747748961,83.6 134.77785252251041,83.6221474774896 134.8,92.57785252251038 122.82214747748961,92.6","135.3668663144291,83.6 147.03313368557087,83.76686631442912 147.2,92.43313368557087 135.3668663144291,92.6","147.61961865973552,83.6 159.58038134026452,83.61961865973548 159.60000000000002,92.58038134026451 147.61961865973552,92.6","160.22014920814055,83.6 171.77985079185945,83.82014920814056 172.0,92.37985079185943 160.22014920814055,92.6","172.6161382422484,83.6 184.1838617577516,83.8161382422484 184.4,92.38386175775159 172.6161382422484,92.6","185.0477936680915,83.6 196.55220633190854,83.84779366809147 196.8,92.35220633190852 185.0477936680915,92.6","36.27555616791108,93.0 47.72444383208892,93.27555616791108 48.0,101.72444383208892 36.27555616791108,102.0","48.67093478796211,93.0 60.12906521203789,93.27093478796212 60.4,101.72906521203788 48.67093478796211,102.0","60.82160698439285,93.0 72.77839301560714,93.02160698439286 72.8,101.97839301560714 60.82160698439285,102.0","73.31460826180644,93.0 85.08539173819356,93.11460826180644 85.2,101.88539173819356 73.31460826180644,102.0","85.7448166787816,93.0 97.45518332121839,93.14481667878161 97.6,101.85518332121839 85.7448166787816,102.0","98.06916764562861,93.0 109.93083235437139,93.06916764562861 110.0,101.93083235437139 98.06916764562861,102.0","110.61613940576397,93.0 122.18386059423604,93.21613940576397 122.4,101.78386059423603 110.61613940576397,102.0","122.96552449230109,93.0 134.63447550769894,93.16552449230109 134.8,101.83447550769891 122.96552449230109,102.0","135.38773736706273,93.0 147.01226263293725,93.18773736706274 147.2,101.81226263293726 135.38773736706273,102.0","147.8865265575821,93.0 159.31347344241794,93.28652655758206 159.60000000000002,101.71347344241794 147.8865265575821,102.0","160.23865368496928,93.0 171.76134631503072,93.23865368496928 172.0,101.76134631503072 160.23865368496928,102.0","172.52906180513693,93.0 184.27093819486308,93.12906180513693 184.4,101.87093819486307 172.52906180513693,102.0","184.828593068129,93.0 196.771406931871,93.028593068129 196.8,101.971406931871 184.828593068129,102.0","36.299546471027085,102.4 47.700453528972915,102.69954647102709 48.0,111.10045352897292 36.299546471027085,111.4","48.49899865377381,102.4 60.30100134622619,102.49899865377382 60.4,111.30100134622619 48.49899865377381,111.4","60.88571399893249,102.4 72.7142860010675,102.4857139989325 72.8,111.31428600106752 60.88571399893249,111.4","73.38872724914775,102.4 85.01127275085226,102.58872724914775 85.2,111.21127275085226 73.38872724914775,111.4","85.69015868059522,102.4 97.50984131940477,102.49015868059523 97.6,111.30984131940478 85.69015868059522,111.4","98.10669145266755,102.4 109.89330854733245,102.50669145266755 110.0,111.29330854733246 98.10669145266755,111.4","110.58674623081264,102.4 122.21325376918738,102.58674623081264 122.4,111.21325376918738 110.58674623081264,111.4","123.00166149692161,102.4 134.5983385030784,102.60166149692162 134.8,111.19833850307839 123.00166149692161,111.4","135.3852889652463,102.4 147.01471103475367,102.58528896524632 147.2,111.21471103475369 135.3852889652463,111.4","147.61125145865597,102.4 159.58874854134407,102.41125145865594 159.60000000000002,111.38874854134407 147.61125145865597,111.4","160.2128959222309,102.4 171.7871040777691,102.61289592223092 172.0,111.18710407776909 160.2128959222309,111.4","172.54048414786914,102.4 184.25951585213087,102.54048414786914 184.4,111.25951585213087 172.54048414786914,111.4","184.96487584577542,102.4 196.6351241542246,102.56487584577543 196.8,111.23512415422458 184.96487584577542,111.4","36.00074714974096,111.8 47.99925285025904,111.80074714974096 48.0,120.79925285025904 36.00074714974096,120.8","48.45768550031984,111.8 60.34231449968016,111.85768550031983 60.4,120.74231449968016 48.45768550031984,120.8","230.48868970067878,46.0 241.91131029932126,46.28868970067876 242.20000000000002,54.71131029932124 230.48868970067878,55.0","242.66373406424344,46.0 254.5362659357566,46.06373406424341 254.60000000000002,54.93626593575659 242.66373406424344,55.0","255.08382437774165,46.0 266.9161756222584,46.08382437774162 267.0,54.91617562225838 255.08382437774165,55.0","267.6479127844358,46.0 279.1520872155643,46.24791278443573 279.40000000000003,54.75208721556427 267.6479127844358,55.0","279.96098048832454,46.0 291.6390195116755,46.16098048832453 291.8,54.83901951167547 279.96098048832454,55.0","292.20684113627385,46.0 304.19315886372624,46.00684113627381 304.20000000000005,54.99315886372619 292.20684113627385,55.0","304.7764172085775,46.0 316.4235827914225,46.176417208577526 316.6,54.823582791422474 304.7764172085775,55.0","317.28448848177345,46.0 328.71551151822655,46.28448848177344 329.0,54.71551151822656 317.28448848177345,55.0","329.422539340292,46.0 341.37746065970805,46.02253934029196 341.40000000000003,54.97746065970804 329.422539340292,55.0","342.07179637600484,46.0 353.5282036239952,46.27179637600482 353.8,54.72820362399518 342.07179637600484,55.0","354.41568638808116,46.0 365.98431361191894,46.215686388081124 366.20000000000005,54.784313611918876 354.41568638808116,55.0","366.8726439956529,46.0 378.32735600434717,46.27264399565285 378.6,54.72735600434715 366.8726439956529,55.0","379.07756793499317,46.0 390.92243206500683,46.07756793499315 391.0,54.92243206500685 379.07756793499317,55.0","230.46908971256386,55.4 241.93091028743618,55.66908971256384 242.20000000000002,64.13091028743617 230.46908971256386,64.4","242.755720831282,55.4 254.44427916871805,55.555720831281974 254.60000000000002,64.24427916871802 242.755720831282,64.4","255.187146926235,55.4 266.81285307376504,55.58714692623496 267.0,64.21285307376505 255.187146926235,64.4","267.4456244816965,55.4 279.3543755183036,55.44562448169645 279.40000000000003,64.35437551830356 267.4456244816965,64.4","279.81150331863057,55.4 291.78849668136945,55.41150331863056 291.8,64.38849668136945 279.81150331863057,64.4","292.30271300119824,55.4 304.09728699880185,55.50271300119819 304.20000000000005,64.29728699880181 292.30271300119824,64.4","304.63141794961615,55.4 316.5685820503839,55.43141794961611 316.6,64.36858205038389 304.63141794961615,64.4","317.26855970302466,55.4 328.73144029697534,55.668559703024656 329.0,64.13144029697534 317.26855970302466,64.4","329.54553796436414,55.4 341.2544620356359,55.54553796436412 341.40000000000003,64.25446203563588 329.54553796436414,64.4","342.0629664827987,55.4 353.53703351720134,55.66296648279869 353.8,64.13703351720132 342.0629664827987,64.4","354.43255526872906,55.4 365.96744473127103,55.632555268729035 366.20000000000005,64.16744473127098 354.43255526872906,64.4","366.75592640811806,55.4 378.444073591882,55.55592640811805 378.6,64.24407359188196 366.75592640811806,64.4","379.16333791010777,55.4 390.83666208989223,55.563337910107755 391.0,64.23666208989225 379.16333791010777,64.4","230.42432229196555,64.8 241.97567770803448,65.02432229196552 242.20000000000002,73.57567770803448 230.42432229196555,73.8","242.7353540115511,64.8 254.46464598844895,64.93535401155106 254.60000000000002,73.66464598844894 242.7353540115511,73.8","255.17163365805519,64.8 266.82836634194484,64.97163365805515 267.0,73.62836634194484 255.17163365805519,73.8","267.5530821844808,64.8 279.2469178155193,64.95308218448075 279.40000000000003,73.64691781551925 267.5530821844808,73.8","280.0297831909567,64.8 291.5702168090433,65.02978319095672 291.8,73.57021680904327 280.0297831909567,73.8","292.34423624722285,64.8 304.05576375277724,64.94423624722278 304.20000000000005,73.65576375277722 292.34423624722285,73.8","304.7873591369179,64.8 316.4126408630821,64.98735913691789 316.6,73.6126408630821 304.7873591369179,73.8","317.1694305217066,64.8 328.8305694782934,64.9694305217066 329.0,73.6305694782934 317.1694305217066,73.8","329.6071393452502,64.8 341.1928606547499,65.00713934525014 341.40000000000003,73.59286065474986 329.6071393452502,73.8","341.8222772117291,64.8 353.7777227882709,64.82227721172907 353.8,73.77772278827092 341.8222772117291,73.8","354.4275035659772,64.8 365.9724964340229,65.02750356597713 366.20000000000005,73.57249643402287 354.4275035659772,73.8","366.641386184644,64.8 378.55861381535607,64.84138618464398 378.6,73.75861381535601 366.641386184644,73.8","379.10576844806326,64.8 390.89423155193674,64.90576844806324 391.0,73.69423155193675 379.10576844806326,73.8","230.44078620878923,74.2 241.9592137912108,74.4407862087892 242.20000000000002,82.9592137912108 230.44078620878923,83.2","242.7137654206564,74.2 254.48623457934366,74.31376542065638 254.60000000000002,83.08623457934362 242.7137654206564,83.2","255.22802443079513,74.2 266.77197556920487,74.4280244307951 267.0,82.9719755692049 255.22802443079513,83.2","267.55423223028714,74.2 279.2457677697129,74.35423223028714 279.40000000000003,83.04576776971287 267.55423223028714,83.2","279.95386049477764,74.2 291.6461395052224,74.35386049477763 291.8,83.04613950522237 279.95386049477764,83.2","292.42133870700417,74.2 303.9786612929959,74.42133870700415 304.20000000000005,82.97866129299585 292.42133870700417,83.2","304.82835385253327,74.2 316.3716461474668,74.42835385253325 316.6,82.97164614746676 304.82835385253327,83.2","317.2704712119415,74.2 328.7295287880585,74.47047121194154 329.0,82.92952878805846 317.2704712119415,83.2","329.65529967147006,74.2 341.14470032853,74.45529967147003 341.40000000000003,82.94470032852998 329.65529967147006,83.2","341.9975579331886,74.2 353.6024420668114,74.39755793318858 353.8,83.00244206681143 341.9975579331886,83.2","354.2911334569312,74.2 366.10886654306887,74.29113345693116 366.20000000000005,83.10886654306884 354.2911334569312,83.2","366.8890217298624,74.2 378.31097827013764,74.48902172986242 378.6,82.91097827013759 366.8890217298624,83.2","379.0012230010179,74.2 390.9987769989821,74.20122300101787 391.0,83.19877699898214 379.0012230010179,83.2","230.21217590464758,83.6 242.18782409535245,83.61217590464756 242.20000000000002,92.58782409535243 230.21217590464758,92.6","242.6939328101856,83.6 254.50606718981444,83.69393281018557 254.60000000000002,92.50606718981442 242.6939328101856,92.6","255.19756506863757,83.6 266.8024349313625,83.79756506863754 267.0,92.40243493136245 255.19756506863757,92.6","267.54475557318784,83.6 279.2552444268122,83.74475557318779 279.40000000000003,92.4552444268122 267.54475557318784,92.6","279.83457611483266,83.6 291.76542388516737,83.63457611483264 291.8,92.56542388516735 279.83457611483266,92.6","292.28205789449197,83.6 304.1179421055081,83.6820578944919 304.20000000000005,92.51794210550808 292.28205789449197,92.6","304.8649052403363,83.6 316.3350947596637,83.8649052403363 316.6,92.33509475966369 304.8649052403363,92.6","317.12790031252524,83.6 328.87209968747476,83.72790031252524 329.0,92.47209968747475 317.12790031252524,92.6","329.6014579903637,83.6 341.19854200963636,83.80145799036367 341.40000000000003,92.39854200963632 329.6014579903637,92.6","341.9806333042384,83.6 353.61936669576164,83.78063330423836 353.8,92.41936669576162 341.9806333042384,92.6","354.2694937840611,83.6 366.13050621593896,83.66949378406106 366.20000000000005,92.53050621593893 354.2694937840611,92.6","366.7885148001454,83.6 378.41148519985467,83.78851480014535 378.6,92.41148519985464 366.7885148001454,92.6","379.0120477014895,83.6 390.9879522985105,83.6120477014895 391.0,92.58795229851049 379.0120477014895,92.6","230.2286040482537,93.0 242.17139595174635,93.02860404825367 242.20000000000002,101.97139595174633 230.2286040482537,102.0","242.77888856721955,93.0 254.4211114327805,93.17888856721953 254.60000000000002,101.82111143278047 242.77888856721955,102.0","255.03657881606253,93.0 266.9634211839375,93.03657881606249 267.0,101.96342118393751 255.03657881606253,102.0","267.64546230657965,93.0 279.1545376934204,93.24546230657958 279.40000000000003,101.75453769342042 267.64546230657965,102.0","279.8601185150598,93.0 291.7398814849402,93.06011851505978 291.8,101.93988148494022 279.8601185150598,102.0","292.283637189846,93.0 304.1163628101541,93.08363718984594 304.20000000000005,101.91636281015406 292.283637189846,102.0","304.8449664568796,93.0 316.35503354312044,93.24496645687961 316.6,101.75503354312039 304.8449664568796,102.0","317.22693923626576,93.0 328.77306076373424,93.22693923626574 329.0,101.77306076373426 317.22693923626576,102.0","329.68131778449776,93.0 341.1186822155023,93.28131778449773 341.40000000000003,101.71868221550227 329.68131778449776,102.0","341.9279624830601,93.0 353.6720375169399,93.12796248306013 353.8,101.87203751693987 341.9279624830601,102.0","354.23134809223967,93.0 366.1686519077604,93.03134809223964 366.20000000000005,101.96865190776036 354.23134809223967,102.0","366.63719697833176,93.0 378.5628030216683,93.03719697833175 378.6,101.96280302166825 366.63719697833176,102.0","379.04373401164105,93.0 390.95626598835895,93.04373401164105 391.0,101.95626598835895 379.04373401164105,102.0","230.37960970498798,102.4 242.02039029501205,102.57960970498796 242.20000000000002,111.22039029501205 230.37960970498798,111.4","242.689789715089,102.4 254.51021028491104,102.489789715089 254.60000000000002,111.31021028491101 242.689789715089,111.4","255.04617316304123,102.4 266.9538268369588,102.44617316304122 267.0,111.35382683695879 255.04617316304123,111.4","267.6836112221201,102.4 279.11638877788,102.68361122212004 279.40000000000003,111.11638877787998 267.6836112221201,111.4","279.80447417218403,102.4 291.795525827816,102.40447417218401 291.8,111.395525827816 279.80447417218403,111.4","292.4186642118939,102.4 303.9813357881062,102.61866421189384 304.20000000000005,111.18133578810617 292.4186642118939,111.4","304.70427367254956,102.4 316.4957263274505,102.50427367254953 316.6,111.29572632745048 304.70427367254956,111.4","317.0946554101073,102.4 328.9053445898927,102.49465541010728 329.0,111.30534458989273 317.0946554101073,111.4","329.40656962052736,102.4 341.3934303794727,102.40656962052732 341.40000000000003,111.39343037947269 329.40656962052736,111.4","341.83508503881797,102.4 353.76491496118206,102.43508503881796 353.8,111.36491496118205 341.83508503881797,111.4","354.4638253245738,102.4 365.9361746754263,102.66382532457378 366.20000000000005,111.13617467542623 354.4638253245738,111.4","366.81886436653093,102.4 378.3811356334691,102.61886436653093 378.6,111.18113563346908 366.81886436653093,111.4","379.17060851946707,102.4 390.82939148053293,102.57060851946707 391.0,111.22939148053294 379.17060851946707,111.4","230.22069437939763,111.8 242.1793056206024,111.82069437939761 242.20000000000002,120.77930562060239 230.22069437939763,120.8","242.77853904950524,111.8 254.4214609504948,111.97853904950523 254.60000000000002,120.62146095049476 242.77853904950524,120.8","255.27562543057226,111.8 266.72437456942777,112.07562543057223 267.0,120.52437456942776 255.27562543057226,120.8","267.4032885650251,111.8 279.396711434975,111.80328856502504 279.40000000000003,120.79671143497495 267.4032885650251,120.8","424.66435557462034,46.0 436.1356444253797,46.26435557462031 436.40000000000003,54.73564442537969 424.66435557462034,55.0","436.9057563195797,46.0 448.6942436804203,46.1057563195797 448.8,54.8942436804203 436.9057563195797,55.0","449.2304935337212,46.0 461.1695064662789,46.03049353372112 461.20000000000005,54.96950646627888 449.2304935337212,55.0","461.7540220567742,46.0 473.44597794322584,46.15402205677419 473.6,54.84597794322581 461.7540220567742,55.0","474.1115299363481,46.0 485.888470063652,46.111529936348084 486.00000000000006,54.888470063651916 474.1115299363481,55.0","486.46578070364745,46.0 498.3342192963526,46.065780703647405 498.40000000000003,54.934219296352595 486.46578070364745,55.0","499.0353944364071,46.0 510.56460556359303,46.23539443640704 510.80000000000007,54.76460556359296 499.0353944364071,55.0","511.41710037301954,46.0 522.9828996269805,46.217100373019505 523.2,54.782899626980495 511.41710037301954,55.0","523.7553859388764,46.0 535.4446140611236,46.155385938876435 535.6,54.844614061123565 523.7553859388764,55.0","536.0941747360368,46.0 547.9058252639632,46.09417473603685 548.0,54.90582526396315 536.0941747360368,55.0","548.572173186275,46.0 560.2278268137252,46.17217318627496 560.4000000000001,54.82782681372504 548.572173186275,55.0","561.0611406319211,46.0 572.538859368079,46.26114063192109 572.8000000000001,54.73885936807891 561.0611406319211,55.0","424.47924226623553,55.4 436.32075773376454,55.47924226623552 436.40000000000003,64.3207577337645 424.47924226623553,64.4","437.02719069953577,55.4 448.57280930046426,55.62719069953576 448.8,64.17280930046425 437.02719069953577,64.4","449.43101980678864,55.4 460.96898019321145,55.631019806788615 461.20000000000005,64.1689801932114 449.43101980678864,64.4","461.7281929990154,55.4 473.47180700098465,55.52819299901537 473.6,64.27180700098464 461.7281929990154,64.4","474.0086048310894,55.4 485.99139516891074,55.40860483108934 486.00000000000006,64.39139516891066 474.0086048310894,64.4","486.42148483132803,55.4 498.37851516867204,55.421484831327966 498.40000000000003,64.37851516867204 486.42148483132803,64.4","498.95864841354836,55.4 510.6413515864518,55.55864841354831 510.80000000000007,64.2413515864517 498.95864841354836,64.4","511.3790346906924,55.4 523.0209653093077,55.57903469069235 523.2,64.22096530930766 511.3790346906924,64.4","523.7534936792013,55.4 535.4465063207988,55.55349367920126 535.6,64.24650632079874 523.7534936792013,64.4","536.2209312584422,55.4 547.7790687415578,55.62093125844223 548.0,64.17906874155777 536.2209312584422,64.4","548.5793073408785,55.4 560.2206926591217,55.57930734087835 560.4000000000001,64.22069265912165 548.5793073408785,64.4","560.8688229475587,55.4 572.7311770524415,55.468822947558614 572.8000000000001,64.33117705244139 560.8688229475587,64.4","424.4705697529121,64.8 436.32943024708794,64.87056975291206 436.40000000000003,73.72943024708793 424.4705697529121,73.8","436.80677469723804,64.8 448.793225302762,64.80677469723803 448.8,73.79322530276197 436.80677469723804,73.8","449.4549874124522,64.8 460.94501258754786,65.0549874124522 461.20000000000005,73.54501258754779 449.4549874124522,73.8","461.630283940463,64.8 473.56971605953703,64.83028394046299 473.6,73.769716059537 461.630283940463,73.8","474.22945505507477,64.8 485.77054494492535,65.02945505507468 486.00000000000006,73.57054494492532 474.22945505507477,73.8","486.6550207473813,64.8 498.1449792526188,65.05502074738123 498.40000000000003,73.54497925261876 486.6550207473813,73.8","498.82454517788904,64.8 510.7754548221111,64.82454517788894 510.80000000000007,73.77545482211106 498.82454517788904,73.8","511.32516073254027,64.8 523.0748392674599,64.92516073254022 523.2,73.67483926745977 511.32516073254027,73.8","523.6944771499583,64.8 535.5055228500418,64.89447714995825 535.6,73.70552285004175 523.6944771499583,73.8","536.2211698767942,64.8 547.7788301232058,65.02116987679415 548.0,73.57883012320585 536.2211698767942,73.8","548.4050043648435,64.8 560.3949956351566,64.80500436484346 560.4000000000001,73.79499563515654 548.4050043648435,73.8","560.9864628629741,64.8 572.613537137026,64.986462862974 572.8000000000001,73.613537137026 560.9864628629741,73.8","424.51860770369274,74.2 436.28139229630733,74.3186077036927 436.40000000000003,83.0813922963073 424.51860770369274,83.2","436.8067329468202,74.2 448.7932670531798,74.20673294682017 448.8,83.19326705317984 436.8067329468202,83.2","449.37298260534266,74.2 461.02701739465743,74.3729826053426 461.20000000000005,83.0270173946574 449.37298260534266,83.2","461.6929585435545,74.2 473.50704145644556,74.29295854355445 473.6,83.10704145644556 461.6929585435545,83.2","474.05126496750665,74.2 485.94873503249346,74.25126496750657 486.00000000000006,83.14873503249343 474.05126496750665,83.2","486.4885182452247,74.2 498.31148175477534,74.28851824522472 498.40000000000003,83.11148175477528 486.4885182452247,83.2","499.0527532868131,74.2 510.54724671318706,74.452753286813 510.80000000000007,82.947246713187 499.0527532868131,83.2","511.28589250492934,74.2 523.1141074950707,74.28589250492931 523.2,83.1141074950707 511.28589250492934,83.2","523.6554541521731,74.2 535.544545847827,74.25545415217313 535.6,83.14454584782688 523.6554541521731,83.2","536.1045170186941,74.2 547.8954829813059,74.30451701869414 548.0,83.09548298130586 536.1045170186941,83.2","548.5925139716414,74.2 560.2074860283587,74.3925139716413 560.4000000000001,83.0074860283587 548.5925139716414,83.2","560.9613116091098,74.2 572.6386883908904,74.3613116091097 572.8000000000001,83.0386883908903 560.9613116091098,83.2","424.4226648915402,83.6 436.3773351084599,83.62266489154013 436.40000000000003,92.57733510845986 424.4226648915402,92.6","436.9717474306013,83.6 448.62825256939874,83.77174743060128 448.8,92.42825256939871 436.9717474306013,92.6","449.32851580852815,83.6 461.07148419147194,83.7285158085281 461.20000000000005,92.47148419147189 449.32851580852815,92.6","461.7984526867242,83.6 473.40154731327584,83.79845268672419 473.6,92.4015473132758 461.7984526867242,92.6","474.2271276559222,83.6 485.77287234407794,83.82712765592213 486.00000000000006,92.37287234407786 474.2271276559222,92.6","486.44610225592425,83.6 498.3538977440758,83.64610225592423 498.40000000000003,92.55389774407575 486.44610225592425,92.6","498.9108987139912,83.6 510.68910128600896,83.7108987139911 510.80000000000007,92.48910128600889 498.9108987139912,92.6","511.4289773082693,83.6 522.9710226917308,83.82897730826923 523.2,92.37102269173076 511.4289773082693,92.6","523.7265205612935,83.6 535.4734794387066,83.72652056129347 535.6,92.47347943870652 523.7265205612935,92.6","536.2272590713059,83.6 547.7727409286941,83.82725907130587 548.0,92.37274092869411 536.2272590713059,92.6","548.5016450349013,83.6 560.2983549650988,83.70164503490123 560.4000000000001,92.49835496509876 548.5016450349013,92.6","560.9601649348277,83.6 572.6398350651724,83.76016493482771 572.8000000000001,92.43983506517228 560.9601649348277,92.6","424.48776988348,93.0 436.3122301165201,93.08776988347998 436.40000000000003,101.91223011652002 424.48776988348,102.0","437.0945101624256,93.0 448.50548983757443,93.2945101624256 448.8,101.7054898375744 437.0945101624256,102.0","449.3467890939548,93.0 461.0532109060453,93.14678909395472 461.20000000000005,101.85321090604528 449.3467890939548,102.0","461.7022307165816,93.0 473.49776928341845,93.10223071658159 473.6,101.89776928341841 461.7022307165816,102.0","474.20065671588645,93.0 485.79934328411366,93.2006567158864 486.00000000000006,101.7993432841136 474.20065671588645,102.0","486.6371368730935,93.0 498.1628631269066,93.23713687309343 498.40000000000003,101.76286312690657 486.6371368730935,102.0","499.05386510776526,93.0 510.5461348922349,93.25386510776521 510.80000000000007,101.74613489223479 499.05386510776526,102.0","511.45665333531605,93.0 522.943346664684,93.256653335316 523.2,101.743346664684 511.45665333531605,102.0","523.8498979212162,93.0 535.3501020787838,93.24989792121619 535.6,101.75010207878381 523.8498979212162,102.0","536.1831483609911,93.0 547.8168516390089,93.18314836099111 548.0,101.81685163900889 536.1831483609911,102.0","548.65597858365,93.0 560.1440214163501,93.25597858364989 560.4000000000001,101.74402141635011 548.65597858365,102.0","560.8041188896037,93.0 572.7958811103964,93.00411888960369 572.8000000000001,101.99588111039631 560.8041188896037,102.0","424.61866661333505,102.4 436.181333386665,102.61866661333504 436.40000000000003,111.18133338666497 424.61866661333505,111.4","436.93836280521754,102.4 448.6616371947825,102.53836280521755 448.8,111.26163719478247 436.93836280521754,111.4","449.34794791692883,102.4 461.05205208307126,102.54794791692879 461.20000000000005,111.25205208307122 449.34794791692883,111.4","461.7782299155917,102.4 473.42177008440837,102.57822991559168 473.6,111.22177008440833 461.7782299155917,111.4","474.2918688792893,102.4 485.7081311207108,102.69186887928926 486.00000000000006,111.10813112071075 474.2918688792893,111.4","486.439903750743,102.4 498.3600962492571,102.43990375074294 498.40000000000003,111.36009624925707 486.439903750743,111.4","498.83030993440366,102.4 510.7696900655965,102.43030993440357 510.80000000000007,111.36969006559644 498.83030993440366,111.4","511.2831460185477,102.4 523.1168539814523,102.48314601854767 523.2,111.31685398145234 511.2831460185477,111.4","523.6354803433167,102.4 535.5645196566834,102.4354803433166 535.6,111.36451965668341 523.6354803433167,111.4","536.2371654612853,102.4 547.7628345387147,102.63716546128522 548.0,111.16283453871479 536.2371654612853,111.4","548.4480893224597,102.4 560.3519106775404,102.44808932245967 560.4000000000001,111.35191067754035 548.4480893224597,111.4","560.826477406367,102.4 572.7735225936332,102.42647740636694 572.8000000000001,111.37352259363307 560.826477406367,111.4","424.54579216334577,111.8 436.2542078366543,111.94579216334576 436.40000000000003,120.65420783665424 424.54579216334577,120.8","436.8874511752874,111.8 448.7125488247126,111.88745117528744 448.8,120.71254882471256 436.8874511752874,120.8","618.7211153886882,46.0 630.4788846113119,46.12111538868814 630.6,54.87888461131186 618.7211153886882,55.0","631.24958274041,46.0 642.75041725959,46.249582740410005 643.0,54.750417259589995 631.24958274041,55.0","643.4642648438818,46.0 655.3357351561182,46.06426484388186 655.4,54.93573515611814 643.4642648438818,55.0","656.0187217723159,46.0 667.5812782276843,46.21872177231582 667.8000000000001,54.78127822768418 656.0187217723159,55.0","668.4227619140141,46.0 679.977238085986,46.22276191401404 680.2,54.77723808598596 668.4227619140141,55.0","680.6398532814267,46.0 692.5601467185734,46.0398532814267 692.6,54.9601467185733 680.6398532814267,55.0","693.2456730882001,46.0 704.7543269117999,46.2456730882001 705.0,54.7543269117999 693.2456730882001,55.0","705.4646986928554,46.0 717.3353013071445,46.06469869285543 717.4,54.93530130714457 705.4646986928554,55.0","718.0473911842851,46.0 729.5526088157151,46.24739118428495 729.8000000000001,54.75260881571505 718.0473911842851,55.0","730.2707733625433,46.0 742.1292266374568,46.070773362543285 742.2,54.929226637456715 730.2707733625433,55.0","742.8044212219713,46.0 754.3955787780287,46.20442122197133 754.6,54.79557877802867 742.8044212219713,55.0","755.0707311327697,46.0 766.9292688672303,46.07073113276965 767.0,54.92926886723035 755.0707311327697,55.0","618.603117399374,55.4 630.596882600626,55.40311739937405 630.6,64.39688260062596 618.603117399374,64.4","631.2112331322624,55.4 642.7887668677376,55.61123313226231 643.0,64.18876686773768 631.2112331322624,64.4","643.4237379248518,55.4 655.3762620751481,55.42373792485185 655.4,64.37626207514815 643.4237379248518,64.4","655.8886326628786,55.4 667.7113673371215,55.4886326628786 667.8000000000001,64.31136733712141 655.8886326628786,64.4","668.4325418204936,55.4 679.9674581795065,55.632541820493614 680.2,64.1674581795064 668.4325418204936,64.4","680.7900160253178,55.4 692.4099839746823,55.590016025317695 692.6,64.20998397468232 680.7900160253178,64.4","693.1019863525178,55.4 704.8980136474822,55.50198635251772 705.0,64.29801364748228 693.1019863525178,64.4","705.5531755434371,55.4 717.2468244565629,55.55317554343705 717.4,64.24682445656296 705.5531755434371,64.4","717.8469930879594,55.4 729.7530069120407,55.44699308795928 729.8000000000001,64.35300691204073 717.8469930879594,64.4","730.34579752981,55.4 742.05420247019,55.54579752981001 742.2,64.25420247019 730.34579752981,64.4","742.6415370420507,55.4 754.5584629579494,55.441537042050626 754.6,64.35846295794937 742.6415370420507,64.4","755.0589431869952,55.4 766.9410568130048,55.458943186995135 767.0,64.34105681300487 755.0589431869952,64.4","618.6972960893115,64.8 630.5027039106885,64.89729608931151 630.6,73.70270391068848 618.6972960893115,73.8","631.2987769232124,64.8 642.7012230767876,65.09877692321234 643.0,73.50122307678765 631.2987769232124,73.8","643.5349299727587,64.8 655.2650700272412,64.93492997275872 655.4,73.66507002724127 643.5349299727587,73.8","656.0614156465274,64.8 667.5385843534727,65.06141564652728 667.8000000000001,73.53858435347271 656.0614156465274,73.8","668.4856746003647,64.8 679.9143253996353,65.08567460036473 680.2,73.51432539963527 668.4856746003647,73.8","680.7576056402539,64.8 692.4423943597461,64.95760564025392 692.6,73.64239435974608 680.7576056402539,73.8","693.1984704599927,64.8 704.8015295400073,64.9984704599927 705.0,73.60152954000729 693.1984704599927,73.8","705.6997200094451,64.8 717.1002799905549,65.09972000944508 717.4,73.50027999055492 705.6997200094451,73.8","718.0709851414564,64.8 729.5290148585437,65.07098514145629 729.8000000000001,73.5290148585437 718.0709851414564,73.8","730.4985157352985,64.8 741.9014842647016,65.0985157352985 742.2,73.50148426470149 730.4985157352985,73.8","742.6686105446817,64.8 754.5313894553184,64.86861054468157 754.6,73.73138945531842 742.6686105446817,73.8","755.1152458014232,64.8 766.8847541985768,64.91524580142311 767.0,73.68475419857688 755.1152458014232,73.8","618.7707047236083,74.2 630.4292952763917,74.37070472360834 630.6,83.02929527639166 618.7707047236083,83.2","631.1210714855011,74.2 642.8789285144989,74.32107148550112 643.0,83.07892851449888 631.1210714855011,83.2","643.5722712367325,74.2 655.2277287632675,74.37227123673254 655.4,83.02772876326746 643.5722712367325,83.2","655.9043210437069,74.2 667.6956789562932,74.30432104370679 667.8000000000001,83.09567895629321 655.9043210437069,83.2","668.475822149588,74.2 679.9241778504121,74.4758221495879 680.2,82.92417785041211 668.475822149588,83.2","680.8773965013589,74.2 692.3226034986411,74.4773965013589 692.6,82.92260349864111 680.8773965013589,83.2","693.2693808292557,74.2 704.7306191707443,74.46938082925571 705.0,82.9306191707443 693.2693808292557,83.2","705.5480825729451,74.2 717.2519174270549,74.34808257294513 717.4,83.05191742705487 705.5480825729451,83.2","717.9763334729731,74.2 729.623666527027,74.37633347297304 729.8000000000001,83.02366652702696 717.9763334729731,83.2","730.2327645997835,74.2 742.1672354002166,74.23276459978351 742.2,83.1672354002165 730.2327645997835,83.2","742.8409817513982,74.2 754.3590182486018,74.44098175139824 754.6,82.95901824860177 742.8409817513982,83.2","755.0522675220891,74.2 766.9477324779109,74.25226752208907 767.0,83.14773247791094 755.0522675220891,83.2","618.8004341268712,83.6 630.3995658731288,83.80043412687118 630.6,92.39956587312881 618.8004341268712,92.6","631.1320559778045,83.6 642.8679440221955,83.73205597780452 643.0,92.46794402219547 631.1320559778045,92.6","643.4709763272888,83.6 655.3290236727112,83.67097632728878 655.4,92.5290236727112 643.4709763272888,92.6","655.9778383656118,83.6 667.6221616343884,83.77783836561171 667.8000000000001,92.42216163438827 655.9778383656118,92.6","668.2979196588794,83.6 680.1020803411207,83.69791965887944 680.2,92.50208034112055 668.2979196588794,92.6","680.7558270791399,83.6 692.4441729208602,83.75582707913985 692.6,92.44417292086014 680.7558270791399,92.6","693.1316282395776,83.6 704.8683717604224,83.73162823957755 705.0,92.46837176042244 693.1316282395776,92.6","705.6196954300043,83.6 717.1803045699957,83.81969543000433 717.4,92.38030456999566 705.6196954300043,92.6","717.9906670084617,83.6 729.6093329915384,83.79066700846161 729.8000000000001,92.40933299153838 717.9906670084617,92.6","730.3076844909609,83.6 742.0923155090392,83.70768449096092 742.2,92.49231550903907 730.3076844909609,92.6","742.8662878980483,83.6 754.3337121019517,83.86628789804826 754.6,92.33371210195173 742.8662878980483,92.6","755.145550925987,83.6 766.854449074013,83.74555092598693 767.0,92.45444907401306 755.145550925987,92.6","618.6400448031482,93.0 630.5599551968519,93.04004480314808 630.6,101.95995519685192 618.6400448031482,102.0","631.1389236542826,93.0 642.8610763457174,93.13892365428258 643.0,101.86107634571742 631.1389236542826,102.0","643.557573132195,93.0 655.242426867805,93.15757313219505 655.4,101.84242686780495 643.557573132195,102.0","656.0969137364237,93.0 667.5030862635764,93.2969137364237 667.8000000000001,101.7030862635763 656.0969137364237,102.0","668.219946395934,93.0 680.1800536040661,93.01994639593401 680.2,101.98005360406599 668.219946395934,102.0","680.8118217158303,93.0 692.3881782841697,93.2118217158303 692.6,101.7881782841697 680.8118217158303,102.0","693.0051810801586,93.0 704.9948189198414,93.00518108015861 705.0,101.99481891984139 693.0051810801586,102.0","705.6408799490931,93.0 717.1591200509068,93.24087994909316 717.4,101.75912005090684 705.6408799490931,102.0","717.9212697808074,93.0 729.6787302191927,93.12126978080737 729.8000000000001,101.87873021919263 717.9212697808074,102.0","730.2665994340986,93.0 742.1334005659015,93.0665994340985 742.2,101.9334005659015 730.2665994340986,102.0","742.8407087188526,93.0 754.3592912811474,93.24070871885259 754.6,101.75929128114741 742.8407087188526,102.0","755.0049075403135,93.0 766.9950924596865,93.0049075403135 767.0,101.9950924596865 755.0049075403135,102.0","618.6564610680108,102.4 630.5435389319892,102.45646106801075 630.6,111.34353893198926 618.6564610680108,111.4","631.2721778453563,102.4 642.7278221546437,102.67217784535623 643.0,111.12782215464378 631.2721778453563,111.4","643.6421833509112,102.4 655.1578166490888,102.64218335091115 655.4,111.15781664908886 643.6421833509112,111.4","655.9685189450669,102.4 667.6314810549333,102.56851894506686 667.8000000000001,111.23148105493316 655.9685189450669,111.4","668.4240426077463,102.4 679.9759573922538,102.62404260774625 680.2,111.17595739225376 668.4240426077463,111.4"];
+const BLOCKS = {"A":{"cx":114.93,"cy":79.51,"count":93,"types":{"residential":85,"C":2,"P":1,"UT":1,"CR":3,"OS":1}},"B":{"cx":308.25,"cy":80.28,"count":95,"types":{"residential":90,"P":1,"CR":2,"C":1,"OS":1}},"C":{"cx":497.16,"cy":79.57,"count":86,"types":{"residential":80,"CR":3,"UT":1,"C":1,"OS":1}},"D":{"cx":689.98,"cy":76.14,"count":77,"types":{"residential":70,"CR":2,"C":2,"UT":1,"P":1,"OS":1}}};
+const ESTATE_NAME = "Satellite Estate";
+const ESTATE_LOC = "Ishinome, Akpuoga Nike, Enugu East";
+const ESTATE_INITIALS = "SE";
+const SVG_W = 824.8000000000001, SVG_H = 400;
+
+// ═══ STATUS & TYPE COLORS ═══
+const SC = {
+  available: {fill:'#22c55e',fillOp:.72,stroke:'#15803d',strokeOp:.85},
+  sold:      {fill:'#ef4444',fillOp:.65,stroke:'#b91c1c',strokeOp:.8},
+  reserved:  {fill:'#eab308',fillOp:.65,stroke:'#a16207',strokeOp:.8}
+};
+const TC = {
+  CR:  {fill:'#3b82f6',fillOp:.55,stroke:'#1d4ed8',strokeOp:.7},
+  C:   {fill:'#8b5cf6',fillOp:.55,stroke:'#6d28d9',strokeOp:.7},
+  IN:  {fill:'#f97316',fillOp:.55,stroke:'#c2410c',strokeOp:.7},
+  UT:  {fill:'#a78bfa',fillOp:.45,stroke:'#7c3aed',strokeOp:.6},
+  OS:  {fill:'#34d399',fillOp:.4,stroke:'#059669',strokeOp:.6},
+  P:   {fill:'#f472b6',fillOp:.45,stroke:'#db2777',strokeOp:.6},
+  SP:  {fill:'#fbbf24',fillOp:.5,stroke:'#d97706',strokeOp:.7}
+};
+function gc(p){ const t=p.t.toUpperCase(); return TC[t]||SC[p.s]||SC.available; }
+function fmt(n){ return '\u20A6'+n.toLocaleString(); }
+function tn(t){ const m={residential:'Residential',CR:'Commercial/Residential',C:'Commercial',IN:'Industrial',UT:'Utility',OS:'Open Space',P:'Public Use',SP:'Special'}; return m[t]||t; }
+
+// ═══ PAN & ZOOM ═══
+const root=document.getElementById('map-root'), wrap=document.getElementById('wrap');
+let scale=1,panX=0,panY=0,isDragging=false,dragMoved=false,dragStart={x:0,y:0};
+let selIdx=-1,activeBlock=null,statusFilter='all';
+const plotLayer=document.getElementById('plot-layer');
+const blockLabels=document.getElementById('block-labels');
+
+function applyTransform(){
+  wrap.style.transform=`translate(${panX}px,${panY}px) scale(${scale})`;
+  const pct=document.querySelector('.zoom-pct');
+  if(pct) pct.textContent=Math.round(scale*100)+'%';
+}
+function zoomAt(cx,cy,factor){
+  const ns=Math.max(.3,Math.min(25,scale*factor));
+  panX=cx-(cx-panX)*(ns/scale);
+  panY=cy-(cy-panY)*(ns/scale);
+  scale=ns;
+  applyTransform();
+}
+function fitView(){
+  const vw=window.innerWidth,vh=window.innerHeight;
+  scale=Math.min(vw/SVG_W,vh/SVG_H)*.95;
+  panX=(vw-SVG_W*scale)/2;
+  panY=(vh-SVG_H*scale)/2;
+  applyTransform();
+}
+
+// Mouse wheel
+root.addEventListener('wheel',e=>{
+  e.preventDefault();
+  zoomAt(e.clientX,e.clientY,e.deltaY<0?1.12:1/1.12);
+},{passive:false});
+
+// Mouse drag
+root.addEventListener('mousedown',e=>{
+  if(e.button!==0)return;
+  isDragging=true;dragMoved=false;
+  dragStart={x:e.clientX-panX,y:e.clientY-panY};
+  root.classList.add('dragging');
+});
+window.addEventListener('mousemove',e=>{
+  if(!isDragging)return;
+  const dx=e.clientX-dragStart.x-panX,dy=e.clientY-dragStart.y-panY;
+  if(Math.abs(dx)>3||Math.abs(dy)>3) dragMoved=true;
+  panX=e.clientX-dragStart.x;
+  panY=e.clientY-dragStart.y;
+  applyTransform();
+});
+window.addEventListener('mouseup',()=>{
+  isDragging=false;
+  root.classList.remove('dragging');
+});
+
+// Touch
+let lastTouchDist=0;
+root.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){
+    isDragging=true;dragMoved=false;
+    dragStart={x:e.touches[0].clientX-panX,y:e.touches[0].clientY-panY};
+  } else if(e.touches.length===2){
+    lastTouchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+  }
+},{passive:false});
+root.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(e.touches.length===1&&isDragging){
+    const dx=e.touches[0].clientX-dragStart.x-panX;
+    const dy=e.touches[0].clientY-dragStart.y-panY;
+    if(Math.abs(dx)>3||Math.abs(dy)>3) dragMoved=true;
+    panX=e.touches[0].clientX-dragStart.x;
+    panY=e.touches[0].clientY-dragStart.y;
+    applyTransform();
+  } else if(e.touches.length===2){
+    const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    if(lastTouchDist>0){
+      const cx=(e.touches[0].clientX+e.touches[1].clientX)/2;
+      const cy=(e.touches[0].clientY+e.touches[1].clientY)/2;
+      zoomAt(cx,cy,d/lastTouchDist);
+    }
+    lastTouchDist=d;
+  }
+},{passive:false});
+root.addEventListener('touchend',()=>{ isDragging=false;lastTouchDist=0; });
+
+// Double click
+root.addEventListener('dblclick',e=>{ zoomAt(e.clientX,e.clientY,2.5); });
+
+// Keyboard
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT')return;
+  switch(e.key){
+    case'+':case'=':zoomAt(window.innerWidth/2,window.innerHeight/2,1.3);break;
+    case'-':zoomAt(window.innerWidth/2,window.innerHeight/2,1/1.3);break;
+    case'0':fitView();break;
+    case'Escape':closePanel();break;
+    case'ArrowUp':panY+=60;applyTransform();break;
+    case'ArrowDown':panY-=60;applyTransform();break;
+    case'ArrowLeft':panX+=60;applyTransform();break;
+    case'ArrowRight':panX-=60;applyTransform();break;
+  }
+});
+
+// ═══ RENDER PLOTS ═══
+function renderPlots(){
+  PLOTS.forEach((p,i)=>{
+    const poly=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    poly.setAttribute('points',POLYS[i]);
+    poly.setAttribute('data-idx',i);
+    poly.classList.add('plot-poly');
+    const c=gc(p);
+    poly.setAttribute('fill',c.fill);
+    poly.setAttribute('fill-opacity',c.fillOp);
+    poly.setAttribute('stroke',c.stroke);
+    poly.setAttribute('stroke-opacity',c.strokeOp);
+    poly.setAttribute('stroke-width','0.5');
+    // Hide if filtered
+    if(activeBlock&&p.b!==activeBlock) poly.style.display='none';
+    if(statusFilter!=='all'&&p.s!==statusFilter) poly.style.display='none';
+    plotLayer.appendChild(poly);
+  });
+}
+
+// ═══ RENDER BLOCK LABELS ═══
+function renderBlockLabels(){
+  Object.entries(BLOCKS).forEach(([id,b])=>{
+    const txt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    txt.setAttribute('x',b.cx);
+    txt.setAttribute('y',b.cy);
+    txt.setAttribute('text-anchor','middle');
+    txt.setAttribute('dominant-baseline','central');
+    txt.classList.add('block-label');
+    const fs=b.count>200?16:b.count>50?14:12;
+    txt.setAttribute('font-size',fs);
+    txt.textContent='Block '+id;
+    blockLabels.appendChild(txt);
+  });
+}
+
+// ═══ TOOLTIP ═══
+const tip=document.getElementById('tip');
+function showTip(e,p){
+  tip.innerHTML=`<div class="tip-head"><span class="tip-id">${p.i}</span><span class="tip-badge ${p.s}">${p.s}</span></div><div class="tip-meta">${tn(p.t)} \u00b7 ${p.z}m\u00b2 \u00b7 Block ${p.b}</div>`;
+  tip.classList.add('on');
+  const x=Math.min(e.clientX+16,window.innerWidth-230);
+  const y=Math.min(e.clientY+16,window.innerHeight-80);
+  tip.style.left=x+'px';tip.style.top=y+'px';
+}
+function hideTip(){ tip.classList.remove('on'); }
+
+// ═══ DETAIL PANEL ═══
+const panel=document.getElementById('panel');
+function openPanel(p){
+  const hc=p.s==='available'?'rgba(34,197,94,.15)':p.s==='sold'?'rgba(239,68,68,.12)':'rgba(234,179,8,.12)';
+  panel.innerHTML=`
+    <button class="panel-close" onclick="closePanel()">\u2715</button>
+    <div class="panel-hero" style="--hc:${hc}">
+      <div class="label">Block ${p.b} \u00b7 ${tn(p.t)}</div>
+      <div class="title">${p.i}</div>
+      <div class="subtitle">${ESTATE_NAME} \u2014 ${ESTATE_LOC}</div>
+    </div>
+    <div class="panel-body">
+      <div class="pd-status ${p.s}"><span class="dot"></span>${p.s}</div>
+      <div class="pd-grid">
+        <div class="pd-card"><div class="lbl">Type</div><div class="val">${tn(p.t)}</div></div>
+        <div class="pd-card"><div class="lbl">Size</div><div class="val">${p.z} m\u00b2</div></div>
+        <div class="pd-card"><div class="lbl">Block</div><div class="val">${p.b}</div></div>
+        <div class="pd-card"><div class="lbl">Plot No.</div><div class="val">${p.n}</div></div>
+        <div class="pd-card wide price"><div class="lbl">Price</div><div class="val">${fmt(p.p)}</div></div>
+        <div class="pd-card"><div class="lbl">Estate</div><div class="val">${ESTATE_NAME}</div></div>
+        <div class="pd-card"><div class="lbl">Area</div><div class="val">${ESTATE_LOC.split(',')[0]}</div></div>
+      </div>
+      <button class="enquire-btn ${p.s==='available'?'active':'disabled'}" ${p.s!=='available'?'disabled':''}>
+        ${p.s==='available'?'Enquire Now':p.s==='sold'?'Sold':'Reserved'}
+      </button>
+    </div>`;
+  panel.classList.add('open');
+}
+function closePanel(){
+  panel.classList.remove('open');
+  if(selIdx>=0){
+    const prev=plotLayer.children[selIdx];
+    if(prev) prev.classList.remove('selected');
+    selIdx=-1;
+  }
+}
+
+function selectPlot(idx){
+  if(selIdx>=0){
+    const prev=plotLayer.children[selIdx];
+    if(prev) prev.classList.remove('selected');
+  }
+  selIdx=idx;
+  const el=plotLayer.children[idx];
+  if(el) el.classList.add('selected');
+  openPanel(PLOTS[idx]);
+  // Center on plot
+  const p=PLOTS[idx];
+  const cx=window.innerWidth/2, cy=window.innerHeight/2;
+  if(scale<3){
+    const ns=5;
+    panX=cx-p.x*ns;
+    panY=cy-p.y*ns;
+    scale=ns;
+  }
+  applyTransform();
+}
+
+// Plot events
+plotLayer.addEventListener('click',e=>{
+  if(dragMoved) return;
+  const el=e.target.closest('.plot-poly');
+  if(!el) return;
+  selectPlot(parseInt(el.dataset.idx));
+});
+plotLayer.addEventListener('mousemove',e=>{
+  const el=e.target.closest('.plot-poly');
+  if(el) showTip(e,PLOTS[parseInt(el.dataset.idx)]);
+  else hideTip();
+});
+plotLayer.addEventListener('mouseleave',hideTip);
+
+// Click empty space to close
+root.addEventListener('click',e=>{
+  if(dragMoved) return;
+  if(!e.target.closest('.plot-poly')&&!e.target.closest('#panel')){
+    closePanel();
+  }
+});
+
+// ═══ UI RENDERING ═══
+function renderUI(){
+  const counts={available:0,sold:0,reserved:0};
+  PLOTS.forEach(p=>counts[p.s]++);
+  const total=PLOTS.length;
+
+  // Top bar
+  const topbar=document.createElement('div');
+  topbar.id='topbar';
+  topbar.innerHTML=`
+    <div class="brand">
+      <div class="brand-mark">${ESTATE_INITIALS}</div>
+      <div><h1>${ESTATE_NAME}</h1><div class="sub">${ESTATE_LOC}</div></div>
+    </div>
+    <div class="legend" id="legend">
+      <div class="leg-chip active" data-f="all"><div class="leg-dot" style="background:linear-gradient(135deg,#22c55e,#3b82f6)"></div>All<span class="leg-num">${total}</span></div>
+      <div class="leg-chip" data-f="available"><div class="leg-dot" style="background:#22c55e"></div>Available<span class="leg-num">${counts.available}</span></div>
+      <div class="leg-chip" data-f="sold"><div class="leg-dot" style="background:#ef4444"></div>Sold<span class="leg-num">${counts.sold}</span></div>
+      <div class="leg-chip" data-f="reserved"><div class="leg-dot" style="background:#eab308"></div>Reserved<span class="leg-num">${counts.reserved}</span></div>
+    </div>`;
+  document.body.appendChild(topbar);
+
+  // Legend filter
+  document.getElementById('legend').addEventListener('click',e=>{
+    const chip=e.target.closest('.leg-chip');
+    if(!chip) return;
+    statusFilter=chip.dataset.f;
+    document.querySelectorAll('.leg-chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    // Re-filter
+    Array.from(plotLayer.children).forEach((el,i)=>{
+      const p=PLOTS[i];
+      const blockOk=!activeBlock||p.b===activeBlock;
+      const statusOk=statusFilter==='all'||p.s===statusFilter;
+      el.style.display=(blockOk&&statusOk)?'':'none';
+    });
+  });
+
+  // Search
+  const sw=document.createElement('div');
+  sw.className='search-wrap';
+  sw.innerHTML=`<div class="search-icon"><svg><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><input id="search" placeholder="Search plot e.g. ${Object.keys(BLOCKS)[0]}-1, ${Object.keys(BLOCKS)[0]}-25...">`;
+  document.body.appendChild(sw);
+  const sr=document.createElement('div');
+  sr.className='search-results';sr.id='searchResults';
+  document.body.appendChild(sr);
+
+  document.getElementById('search').addEventListener('input',e=>{
+    const q=e.target.value.toUpperCase().trim();
+    if(!q){ sr.classList.remove('open');sr.innerHTML='';return; }
+    const matches=PLOTS.map((p,i)=>({...p,idx:i})).filter(p=>p.i.toUpperCase().includes(q)).slice(0,10);
+    if(!matches.length){ sr.classList.remove('open');sr.innerHTML='';return; }
+    sr.innerHTML=matches.map(p=>`<div class="sr-item" data-idx="${p.idx}"><div><span class="sr-id">${p.i}</span><span class="sr-block"> Block ${p.b}</span></div><span class="sr-badge ${p.s}">${p.s}</span></div>`).join('');
+    sr.classList.add('open');
+  });
+  sr.addEventListener('click',e=>{
+    const item=e.target.closest('.sr-item');
+    if(!item) return;
+    selectPlot(parseInt(item.dataset.idx));
+    sr.classList.remove('open');
+    document.getElementById('search').value='';
+  });
+
+  // Block filters
+  const bKeys=Object.keys(BLOCKS);
+  if(bKeys.length>1){
+    const bf=document.createElement('div');
+    bf.className='block-filters';
+    bf.innerHTML=`<button class="bf-rst" id="bfReset">All Blocks</button>`+bKeys.map(k=>`<button class="bf-btn" data-b="${k}">Block ${k}<span class="bf-cnt">${BLOCKS[k].count}</span></button>`).join('');
+    document.body.appendChild(bf);
+
+    bf.addEventListener('click',e=>{
+      const btn=e.target.closest('.bf-btn');
+      const rst=e.target.closest('.bf-rst');
+      if(btn){
+        const b=btn.dataset.b;
+        activeBlock=activeBlock===b?null:b;
+        document.querySelectorAll('.bf-btn').forEach(x=>x.classList.remove('on'));
+        if(activeBlock) btn.classList.add('on');
+        // Filter & zoom
+        Array.from(plotLayer.children).forEach((el,i)=>{
+          const p=PLOTS[i];
+          const blockOk=!activeBlock||p.b===activeBlock;
+          const statusOk=statusFilter==='all'||p.s===statusFilter;
+          el.style.display=(blockOk&&statusOk)?'':'none';
+        });
+        if(activeBlock&&BLOCKS[activeBlock]){
+          const bl=BLOCKS[activeBlock];
+          const cx=window.innerWidth/2, cy=window.innerHeight/2;
+          scale=6;
+          panX=cx-bl.cx*scale;
+          panY=cy-bl.cy*scale;
+          applyTransform();
+        }
+      }
+      if(rst){
+        activeBlock=null;
+        document.querySelectorAll('.bf-btn').forEach(x=>x.classList.remove('on'));
+        Array.from(plotLayer.children).forEach((el,i)=>{
+          const p=PLOTS[i];
+          const statusOk=statusFilter==='all'||p.s===statusFilter;
+          el.style.display=statusOk?'':'none';
+        });
+        fitView();
+      }
+    });
+  }
+
+  // Stats
+  const stats=document.createElement('div');
+  stats.className='stats';
+  stats.innerHTML=`
+    <div class="stat-item"><div class="stat-num" style="color:#22c55e">${counts.available}</div><div class="stat-lbl">Available</div></div>
+    <div class="stat-item"><div class="stat-num" style="color:#ef4444">${counts.sold}</div><div class="stat-lbl">Sold</div></div>
+    <div class="stat-item"><div class="stat-num" style="color:#eab308">${counts.reserved}</div><div class="stat-lbl">Reserved</div></div>
+    <div class="stat-item"><div class="stat-num">${total}</div><div class="stat-lbl">Total</div></div>`;
+  document.body.appendChild(stats);
+
+  // Zoom controls
+  const ctrls=document.createElement('div');
+  ctrls.className='ctrls';
+  ctrls.innerHTML=`
+    <button class="ctrl-btn" id="zIn"><svg><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+    <button class="ctrl-btn" id="zOut"><svg><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+    <button class="ctrl-btn" id="zFit"><svg><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>`;
+  document.body.appendChild(ctrls);
+  document.getElementById('zIn').addEventListener('click',()=>zoomAt(window.innerWidth/2,window.innerHeight/2,1.4));
+  document.getElementById('zOut').addEventListener('click',()=>zoomAt(window.innerWidth/2,window.innerHeight/2,1/1.4));
+  document.getElementById('zFit').addEventListener('click',fitView);
+
+  // Zoom percentage
+  const zp=document.createElement('div');
+  zp.className='zoom-pct';zp.textContent='100%';
+  document.body.appendChild(zp);
+
+  // Onboarding
+  const ob=document.createElement('div');
+  ob.className='onboard';
+  ob.innerHTML=`<h2>${ESTATE_NAME}</h2><div class="plots">${total} Interactive Plots</div><div class="hints"><div class="hint"><div class="hk">Scroll</div><div class="hv">Zoom</div></div><div class="hint"><div class="hk">Drag</div><div class="hv">Pan</div></div><div class="hint"><div class="hk">Click</div><div class="hv">Select</div></div></div>`;
+  document.body.appendChild(ob);
+}
+
+// ═══ INIT ═══
+renderPlots();
+renderBlockLabels();
+renderUI();
+fitView();
+</script>
+</body>
+</html>

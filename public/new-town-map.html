@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>New Town Estate — Interactive Survey Map</title>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,300;6..72,400;6..72,500;6..72,600;6..72,700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;-webkit-tap-highlight-color:transparent}
+body{font-family:'Inter',system-ui,sans-serif;background:#0a0a0a;color:#e5e5e5}
+#map-root{position:fixed;inset:0;overflow:hidden;cursor:grab;touch-action:none;background:#0a0a0a}
+#map-root.dragging{cursor:grabbing}
+#wrap{transform-origin:0 0;will-change:transform}
+#wrap svg{display:block}
+.plot-poly{cursor:pointer;transition:fill-opacity .12s,stroke-width .12s,filter .12s;vector-effect:non-scaling-stroke}
+.plot-poly:hover{fill-opacity:.92!important;stroke-width:1.2!important;filter:brightness(1.2) drop-shadow(0 0 3px rgba(255,255,255,.15))}
+.plot-poly.selected{stroke:#c9a84c!important;stroke-width:2!important;stroke-opacity:1!important;filter:drop-shadow(0 0 6px rgba(201,168,76,.4))!important;animation:plotPulse 2s ease infinite}
+@keyframes plotPulse{0%,100%{filter:drop-shadow(0 0 6px rgba(201,168,76,.4))}50%{filter:drop-shadow(0 0 12px rgba(201,168,76,.6))}}
+.block-label{font-family:'Newsreader',serif;font-weight:600;fill:rgba(255,255,255,.08);pointer-events:none;user-select:none}
+#topbar{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:linear-gradient(180deg,rgba(10,10,10,.98) 0%,rgba(10,10,10,.85) 65%,transparent 100%);pointer-events:none}
+#topbar>*{pointer-events:auto}
+.brand{display:flex;align-items:center;gap:14px}
+.brand-mark{width:42px;height:42px;border-radius:10px;background:linear-gradient(145deg,#c9a84c,#8a6d2f);display:flex;align-items:center;justify-content:center;font-family:'Newsreader',serif;font-weight:700;font-size:17px;color:#0a0a0a;box-shadow:0 2px 12px rgba(201,168,76,.25)}
+.brand h1{font-family:'Newsreader',serif;font-size:20px;font-weight:600;color:#e8cc6e;line-height:1.1}
+.brand .sub{font-size:9px;color:rgba(255,255,255,.28);letter-spacing:2.5px;text-transform:uppercase;margin-top:2px;font-family:'Inter',sans-serif}
+.legend{display:flex;gap:2px;background:rgba(18,18,18,.94);border:1px solid rgba(255,255,255,.06);border-radius:26px;padding:4px 5px;backdrop-filter:blur(20px)}
+.leg-chip{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:22px;font-size:11px;font-weight:500;color:rgba(255,255,255,.6);cursor:pointer;transition:all .12s}
+.leg-chip:hover{background:rgba(255,255,255,.05)}
+.leg-chip.active{background:rgba(255,255,255,.06)}
+.leg-dot{width:10px;height:10px;border-radius:3px}
+.leg-num{font-weight:700;color:#fff;font-variant-numeric:tabular-nums;margin-left:2px}
+.search-wrap{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:55;display:flex;align-items:center;width:300px;background:rgba(18,18,18,.94);border:1px solid rgba(255,255,255,.08);border-radius:12px;backdrop-filter:blur(20px);overflow:hidden;transition:all .2s;box-shadow:0 4px 20px rgba(0,0,0,.3)}
+.search-wrap:focus-within{border-color:rgba(201,168,76,.3);box-shadow:0 4px 24px rgba(201,168,76,.1)}
+.search-icon{padding:0 4px 0 14px;color:rgba(255,255,255,.25);display:flex;align-items:center}
+.search-icon svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#search{flex:1;background:transparent;border:none;outline:none;color:#e5e5e5;font-family:'Inter',sans-serif;font-size:13px;padding:11px 14px 11px 8px}
+#search::placeholder{color:rgba(255,255,255,.2)}
+.search-results{position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:56;width:300px;background:rgba(14,14,14,.97);border:1px solid rgba(255,255,255,.08);border-radius:12px;max-height:260px;overflow-y:auto;display:none;backdrop-filter:blur(28px);box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.search-results.open{display:block}
+.sr-item{padding:10px 16px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:background .08s;border-bottom:1px solid rgba(255,255,255,.03)}
+.sr-item:last-child{border-bottom:none}
+.sr-item:hover{background:rgba(201,168,76,.08)}
+.sr-id{font-family:'Newsreader',serif;font-weight:600;font-size:14px;color:#e8cc6e}
+.sr-block{font-size:10px;color:rgba(255,255,255,.3)}
+.sr-badge{font-size:9px;font-weight:700;padding:2px 8px;border-radius:8px;text-transform:uppercase}
+.sr-badge.available{background:rgba(34,197,94,.1);color:#22c55e}
+.sr-badge.sold{background:rgba(239,68,68,.08);color:#ef4444}
+.sr-badge.reserved{background:rgba(234,179,8,.08);color:#eab308}
+.block-filters{position:fixed;top:62px;left:24px;z-index:50;display:flex;flex-wrap:wrap;gap:4px;max-width:420px}
+.bf-btn{padding:4px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.06);background:rgba(18,18,18,.85);color:rgba(255,255,255,.35);font-size:10px;font-weight:600;cursor:pointer;transition:all .12s;backdrop-filter:blur(12px);font-family:'Inter',sans-serif}
+.bf-btn:hover{background:rgba(201,168,76,.1);color:#e8cc6e;border-color:rgba(201,168,76,.2)}
+.bf-btn.on{background:rgba(201,168,76,.14);color:#e8cc6e;border-color:rgba(201,168,76,.25)}
+.bf-cnt{font-size:7px;color:rgba(255,255,255,.2);margin-left:2px;font-weight:400}
+.bf-rst{padding:4px 12px;border-radius:7px;border:1px solid rgba(201,168,76,.15);background:rgba(201,168,76,.08);color:#e8cc6e;font-size:10px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}
+.stats{position:fixed;bottom:20px;left:20px;z-index:50;display:flex;gap:1px;background:rgba(18,18,18,.92);border:1px solid rgba(255,255,255,.07);border-radius:14px;overflow:hidden;backdrop-filter:blur(24px)}
+.stat-item{padding:10px 18px;text-align:center;min-width:70px}
+.stat-item+.stat-item{border-left:1px solid rgba(255,255,255,.04)}
+.stat-num{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.stat-lbl{font-size:7px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.25);margin-top:2px}
+.ctrls{position:fixed;bottom:20px;right:20px;z-index:50;display:flex;flex-direction:column;gap:1px;background:rgba(18,18,18,.92);border:1px solid rgba(255,255,255,.07);border-radius:14px;overflow:hidden;backdrop-filter:blur(24px);box-shadow:0 8px 32px rgba(0,0,0,.3)}
+.ctrl-btn{width:46px;height:46px;background:transparent;border:none;color:rgba(255,255,255,.45);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .1s}
+.ctrl-btn:hover{background:rgba(255,255,255,.05);color:#fff}
+.ctrl-btn:active{transform:scale(.93)}
+.ctrl-btn+.ctrl-btn{border-top:1px solid rgba(255,255,255,.04)}
+.ctrl-btn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.zoom-pct{position:fixed;bottom:22px;right:78px;z-index:50;background:rgba(18,18,18,.85);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:7px 13px;font-size:11px;font-weight:600;color:rgba(255,255,255,.28);font-variant-numeric:tabular-nums;backdrop-filter:blur(20px)}
+#tip{position:fixed;z-index:200;pointer-events:none;opacity:0;transition:opacity .06s;background:rgba(14,14,14,.96);border:1px solid rgba(255,255,255,.09);border-radius:13px;padding:14px 18px;min-width:200px;box-shadow:0 16px 48px rgba(0,0,0,.5);backdrop-filter:blur(28px)}
+#tip.on{opacity:1}
+.tip-head{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.tip-id{font-family:'Newsreader',serif;font-size:17px;font-weight:600;color:#e8cc6e}
+.tip-badge{font-size:9px;font-weight:700;letter-spacing:.5px;padding:3px 9px;border-radius:10px;text-transform:uppercase}
+.tip-badge.available{background:rgba(34,197,94,.12);color:#22c55e}
+.tip-badge.sold{background:rgba(239,68,68,.10);color:#ef4444}
+.tip-badge.reserved{background:rgba(234,179,8,.10);color:#eab308}
+.tip-meta{font-size:11px;color:rgba(255,255,255,.3);margin-top:5px}
+#panel{position:fixed;top:0;right:0;bottom:0;width:395px;z-index:100;background:rgba(12,12,12,.98);border-left:1px solid rgba(255,255,255,.06);backdrop-filter:blur(40px);transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-24px 0 64px rgba(0,0,0,.5)}
+#panel.open{transform:translateX(0)}
+.panel-close{position:absolute;top:14px;right:14px;width:36px;height:36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:10px;color:rgba(255,255,255,.35);font-size:16px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;transition:all .1s}
+.panel-close:hover{background:rgba(255,255,255,.08);color:#fff}
+.panel-hero{position:relative;padding:38px 28px 24px;background:radial-gradient(ellipse at 50% 0%,var(--hc,rgba(34,197,94,.15)) 0%,transparent 70%)}
+.panel-hero .label{font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.3);font-weight:500}
+.panel-hero .title{font-family:'Newsreader',serif;font-size:38px;font-weight:700;color:#e8cc6e;line-height:1.1;margin-top:4px}
+.panel-hero .subtitle{font-size:11px;color:rgba(255,255,255,.25);margin-top:6px}
+.panel-body{flex:1;overflow-y:auto;padding:0 24px 28px}
+.panel-body::-webkit-scrollbar{width:3px}
+.panel-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:4px}
+.pd-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.pd-card{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:14px 16px}
+.pd-card.wide{grid-column:1/-1}
+.pd-card .lbl{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.25);margin-bottom:5px}
+.pd-card .val{font-size:14px;font-weight:600;color:#e5e5e5}
+.pd-card.price{background:linear-gradient(135deg,rgba(201,168,76,.08),rgba(201,168,76,.03));border-color:rgba(201,168,76,.12)}
+.pd-card.price .val{font-family:'Newsreader',serif;font-size:26px;color:#e8cc6e}
+.pd-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:5px 14px;border-radius:10px;text-transform:uppercase;letter-spacing:.5px}
+.pd-status.available{background:rgba(34,197,94,.1);color:#22c55e}
+.pd-status.sold{background:rgba(239,68,68,.08);color:#ef4444}
+.pd-status.reserved{background:rgba(234,179,8,.08);color:#eab308}
+.pd-status .dot{width:8px;height:8px;border-radius:50%}
+.pd-status.available .dot{background:#22c55e}
+.pd-status.sold .dot{background:#ef4444}
+.pd-status.reserved .dot{background:#eab308}
+.enquire-btn{display:block;width:100%;margin-top:20px;padding:16px;border-radius:12px;border:none;font-family:'Inter',sans-serif;font-size:14px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:1px;transition:all .15s}
+.enquire-btn.active{background:linear-gradient(135deg,#c9a84c,#e8cc6e);color:#0a0a0a;box-shadow:0 4px 20px rgba(201,168,76,.3)}
+.enquire-btn.active:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(201,168,76,.4)}
+.enquire-btn.disabled{background:rgba(255,255,255,.04);color:rgba(255,255,255,.2);cursor:default}
+.onboard{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:300;text-align:center;animation:fadeOnboard 5.5s ease forwards;pointer-events:none}
+@keyframes fadeOnboard{0%{opacity:0;transform:translate(-50%,-50%) scale(.95)}8%{opacity:1;transform:translate(-50%,-50%) scale(1)}65%{opacity:1}100%{opacity:0}}
+.onboard h2{font-family:'Newsreader',serif;font-size:28px;color:#e8cc6e;font-weight:600}
+.onboard .plots{font-size:13px;color:rgba(255,255,255,.35);margin:6px 0 18px;letter-spacing:1px}
+.onboard .hints{display:flex;gap:12px;justify-content:center}
+.onboard .hint{background:rgba(18,18,18,.9);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 18px;backdrop-filter:blur(20px)}
+.onboard .hk{font-size:10px;font-weight:700;color:#c9a84c;letter-spacing:1px;text-transform:uppercase}
+.onboard .hv{font-size:10px;color:rgba(255,255,255,.3);margin-top:2px}
+@media(max-width:768px){
+  #topbar{padding:10px 14px;flex-direction:column;gap:8px;align-items:flex-start}
+  .legend{display:none}
+  .search-wrap{width:calc(100% - 28px);top:auto;bottom:76px}
+  .search-results{top:auto;bottom:112px;width:calc(100% - 28px)}
+  .block-filters{top:58px;left:10px;max-width:calc(100% - 20px)}
+  #panel{width:100%;height:75vh;top:auto;transform:translateY(100%);border-left:none;border-top:1px solid rgba(255,255,255,.06);border-radius:20px 20px 0 0}
+  #panel.open{transform:translateY(0)}
+  .stats{left:10px;bottom:10px}
+  .ctrls{right:10px;bottom:10px}
+  .zoom-pct{right:68px;bottom:12px}
+}
+</style>
+</head>
+<body>
+<div id="map-root">
+<div id="wrap">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="600" height="400">
+<rect width="600" height="400" fill="#111815"/>
+<rect x="28.0" y="28.0" width="198.5" height="117.10000000000002" rx="3" fill="rgba(255,255,255,.015)" stroke="rgba(255,255,255,.06)" stroke-width=".5"/>
+<rect x="247.0" y="28.0" width="198.5" height="117.10000000000002" rx="3" fill="rgba(255,255,255,.015)" stroke="rgba(255,255,255,.06)" stroke-width=".5"/>
+<g id="plot-layer"></g>
+<g id="block-labels"></g>
+</svg>
+</div>
+</div>
+
+<!-- Tooltip -->
+<div id="tip"></div>
+<!-- Detail Panel -->
+<div id="panel"></div>
+
+<script>
+// ═══ DATA ═══
+const PLOTS = [{"i":"A-1","b":"A","n":"1","t":"residential","s":"available","p":3000000,"z":540,"x":42.0,"y":50.5},{"i":"A-2","b":"A","n":"2","t":"residential","s":"available","p":4000000,"z":648,"x":54.4,"y":50.5},{"i":"A-3","b":"A","n":"3","t":"residential","s":"available","p":3000000,"z":540,"x":66.8,"y":50.5},{"i":"A-4","b":"A","n":"4","t":"residential","s":"sold","p":5000000,"z":540,"x":79.2,"y":50.5},{"i":"A-5","b":"A","n":"5","t":"residential","s":"available","p":4000000,"z":648,"x":91.6,"y":50.5},{"i":"A-6","b":"A","n":"6","t":"residential","s":"available","p":2500000,"z":540,"x":104.0,"y":50.5},{"i":"A-7","b":"A","n":"7","t":"residential","s":"sold","p":3000000,"z":540,"x":116.4,"y":50.5},{"i":"A-8","b":"A","n":"8","t":"residential","s":"available","p":4000000,"z":450,"x":128.8,"y":50.5},{"i":"A-9","b":"A","n":"9","t":"residential","s":"sold","p":4500000,"z":648,"x":141.2,"y":50.5},{"i":"A-10","b":"A","n":"10","t":"residential","s":"reserved","p":4500000,"z":900,"x":153.6,"y":50.5},{"i":"A-11","b":"A","n":"11","t":"residential","s":"available","p":3500000,"z":540,"x":166.0,"y":50.5},{"i":"A-12","b":"A","n":"12","t":"residential","s":"available","p":2500000,"z":540,"x":178.4,"y":50.5},{"i":"A-13","b":"A","n":"13","t":"residential","s":"sold","p":4500000,"z":900,"x":190.8,"y":50.5},{"i":"A-14","b":"A","n":"14","t":"residential","s":"available","p":3500000,"z":450,"x":203.2,"y":50.5},{"i":"A-P/1","b":"A","n":"P/1","t":"P","s":"available","p":1500000,"z":540,"x":42.0,"y":59.9},{"i":"A-15","b":"A","n":"15","t":"residential","s":"available","p":5000000,"z":648,"x":54.4,"y":59.9},{"i":"A-16","b":"A","n":"16","t":"residential","s":"sold","p":3500000,"z":900,"x":66.8,"y":59.9},{"i":"A-P/2","b":"A","n":"P/2","t":"P","s":"available","p":2500000,"z":450,"x":79.2,"y":59.9},{"i":"A-17","b":"A","n":"17","t":"residential","s":"reserved","p":4500000,"z":648,"x":91.6,"y":59.9},{"i":"A-18","b":"A","n":"18","t":"residential","s":"available","p":4500000,"z":600,"x":104.0,"y":59.9},{"i":"A-19","b":"A","n":"19","t":"residential","s":"sold","p":3000000,"z":900,"x":116.4,"y":59.9},{"i":"A-UT/1","b":"A","n":"UT/1","t":"UT","s":"available","p":2000000,"z":600,"x":128.8,"y":59.9},{"i":"A-20","b":"A","n":"20","t":"residential","s":"available","p":3000000,"z":450,"x":141.2,"y":59.9},{"i":"A-21","b":"A","n":"21","t":"residential","s":"available","p":2500000,"z":900,"x":153.6,"y":59.9},{"i":"A-22","b":"A","n":"22","t":"residential","s":"available","p":3500000,"z":900,"x":166.0,"y":59.9},{"i":"A-23","b":"A","n":"23","t":"residential","s":"available","p":3500000,"z":500,"x":178.4,"y":59.9},{"i":"A-24","b":"A","n":"24","t":"residential","s":"available","p":3500000,"z":900,"x":190.8,"y":59.9},{"i":"A-25","b":"A","n":"25","t":"residential","s":"sold","p":3000000,"z":540,"x":203.2,"y":59.9},{"i":"A-26","b":"A","n":"26","t":"residential","s":"sold","p":5000000,"z":900,"x":42.0,"y":69.3},{"i":"A-27","b":"A","n":"27","t":"residential","s":"available","p":3500000,"z":600,"x":54.4,"y":69.3},{"i":"A-28","b":"A","n":"28","t":"residential","s":"available","p":4000000,"z":600,"x":66.8,"y":69.3},{"i":"A-29","b":"A","n":"29","t":"residential","s":"available","p":3000000,"z":450,"x":79.2,"y":69.3},{"i":"A-30","b":"A","n":"30","t":"residential","s":"reserved","p":4000000,"z":600,"x":91.6,"y":69.3},{"i":"A-31","b":"A","n":"31","t":"residential","s":"available","p":3000000,"z":900,"x":104.0,"y":69.3},{"i":"A-32","b":"A","n":"32","t":"residential","s":"available","p":4000000,"z":500,"x":116.4,"y":69.3},{"i":"A-33","b":"A","n":"33","t":"residential","s":"available","p":5000000,"z":500,"x":128.8,"y":69.3},{"i":"A-34","b":"A","n":"34","t":"residential","s":"available","p":3000000,"z":600,"x":141.2,"y":69.3},{"i":"A-35","b":"A","n":"35","t":"residential","s":"available","p":3000000,"z":648,"x":153.6,"y":69.3},{"i":"A-CR/1","b":"A","n":"CR/1","t":"CR","s":"sold","p":10000000,"z":450,"x":166.0,"y":69.3},{"i":"A-36","b":"A","n":"36","t":"residential","s":"reserved","p":2500000,"z":540,"x":178.4,"y":69.3},{"i":"A-37","b":"A","n":"37","t":"residential","s":"available","p":3000000,"z":500,"x":190.8,"y":69.3},{"i":"A-38","b":"A","n":"38","t":"residential","s":"available","p":4000000,"z":648,"x":203.2,"y":69.3},{"i":"A-39","b":"A","n":"39","t":"residential","s":"reserved","p":2500000,"z":540,"x":42.0,"y":78.7},{"i":"A-40","b":"A","n":"40","t":"residential","s":"available","p":4500000,"z":450,"x":54.4,"y":78.7},{"i":"A-41","b":"A","n":"41","t":"residential","s":"available","p":4500000,"z":540,"x":66.8,"y":78.7},{"i":"A-42","b":"A","n":"42","t":"residential","s":"reserved","p":2500000,"z":500,"x":79.2,"y":78.7},{"i":"A-CR/2","b":"A","n":"CR/2","t":"CR","s":"available","p":5000000,"z":540,"x":91.6,"y":78.7},{"i":"A-CR/3","b":"A","n":"CR/3","t":"CR","s":"available","p":10000000,"z":648,"x":104.0,"y":78.7},{"i":"A-CR/4","b":"A","n":"CR/4","t":"CR","s":"available","p":8000000,"z":900,"x":116.4,"y":78.7},{"i":"A-43","b":"A","n":"43","t":"residential","s":"available","p":4500000,"z":500,"x":128.8,"y":78.7},{"i":"A-C/1","b":"A","n":"C/1","t":"C","s":"available","p":6500000,"z":648,"x":141.2,"y":78.7},{"i":"A-44","b":"A","n":"44","t":"residential","s":"available","p":2500000,"z":900,"x":153.6,"y":78.7},{"i":"A-CR/5","b":"A","n":"CR/5","t":"CR","s":"reserved","p":8000000,"z":900,"x":166.0,"y":78.7},{"i":"A-45","b":"A","n":"45","t":"residential","s":"available","p":4000000,"z":450,"x":178.4,"y":78.7},{"i":"A-46","b":"A","n":"46","t":"residential","s":"available","p":4500000,"z":500,"x":190.8,"y":78.7},{"i":"A-47","b":"A","n":"47","t":"residential","s":"reserved","p":4000000,"z":648,"x":203.2,"y":78.7},{"i":"A-48","b":"A","n":"48","t":"residential","s":"available","p":5000000,"z":648,"x":42.0,"y":88.1},{"i":"A-49","b":"A","n":"49","t":"residential","s":"available","p":4500000,"z":500,"x":54.4,"y":88.1},{"i":"A-50","b":"A","n":"50","t":"residential","s":"available","p":4500000,"z":648,"x":66.8,"y":88.1},{"i":"A-51","b":"A","n":"51","t":"residential","s":"available","p":3500000,"z":600,"x":79.2,"y":88.1},{"i":"A-52","b":"A","n":"52","t":"residential","s":"available","p":3500000,"z":648,"x":91.6,"y":88.1},{"i":"A-53","b":"A","n":"53","t":"residential","s":"available","p":4000000,"z":540,"x":104.0,"y":88.1},{"i":"A-54","b":"A","n":"54","t":"residential","s":"reserved","p":3500000,"z":540,"x":116.4,"y":88.1},{"i":"A-55","b":"A","n":"55","t":"residential","s":"reserved","p":5000000,"z":900,"x":128.8,"y":88.1},{"i":"A-56","b":"A","n":"56","t":"residential","s":"reserved","p":4000000,"z":540,"x":141.2,"y":88.1},{"i":"A-57","b":"A","n":"57","t":"residential","s":"reserved","p":5000000,"z":600,"x":153.6,"y":88.1},{"i":"A-58","b":"A","n":"58","t":"residential","s":"reserved","p":4500000,"z":540,"x":166.0,"y":88.1},{"i":"A-59","b":"A","n":"59","t":"residential","s":"available","p":2500000,"z":600,"x":178.4,"y":88.1},{"i":"A-60","b":"A","n":"60","t":"residential","s":"reserved","p":5000000,"z":540,"x":190.8,"y":88.1},{"i":"A-61","b":"A","n":"61","t":"residential","s":"sold","p":4000000,"z":648,"x":203.2,"y":88.1},{"i":"A-62","b":"A","n":"62","t":"residential","s":"available","p":2500000,"z":500,"x":42.0,"y":97.5},{"i":"A-63","b":"A","n":"63","t":"residential","s":"available","p":4000000,"z":648,"x":54.4,"y":97.5},{"i":"A-64","b":"A","n":"64","t":"residential","s":"available","p":2500000,"z":900,"x":66.8,"y":97.5},{"i":"A-65","b":"A","n":"65","t":"residential","s":"available","p":5000000,"z":600,"x":79.2,"y":97.5},{"i":"A-66","b":"A","n":"66","t":"residential","s":"sold","p":3500000,"z":450,"x":91.6,"y":97.5},{"i":"A-67","b":"A","n":"67","t":"residential","s":"sold","p":5000000,"z":500,"x":104.0,"y":97.5},{"i":"A-68","b":"A","n":"68","t":"residential","s":"available","p":4500000,"z":600,"x":116.4,"y":97.5},{"i":"A-69","b":"A","n":"69","t":"residential","s":"available","p":3500000,"z":900,"x":128.8,"y":97.5},{"i":"A-70","b":"A","n":"70","t":"residential","s":"available","p":4500000,"z":500,"x":141.2,"y":97.5},{"i":"A-71","b":"A","n":"71","t":"residential","s":"available","p":2500000,"z":500,"x":153.6,"y":97.5},{"i":"A-72","b":"A","n":"72","t":"residential","s":"available","p":5000000,"z":500,"x":166.0,"y":97.5},{"i":"A-73","b":"A","n":"73","t":"residential","s":"available","p":4500000,"z":450,"x":178.4,"y":97.5},{"i":"A-74","b":"A","n":"74","t":"residential","s":"available","p":4500000,"z":540,"x":190.8,"y":97.5},{"i":"A-75","b":"A","n":"75","t":"residential","s":"reserved","p":3000000,"z":540,"x":203.2,"y":97.5},{"i":"A-76","b":"A","n":"76","t":"residential","s":"available","p":3000000,"z":500,"x":42.0,"y":106.9},{"i":"A-OS/1","b":"A","n":"OS/1","t":"OS","s":"sold","p":2000000,"z":540,"x":54.4,"y":106.9},{"i":"A-77","b":"A","n":"77","t":"residential","s":"available","p":3000000,"z":540,"x":66.8,"y":106.9},{"i":"A-78","b":"A","n":"78","t":"residential","s":"available","p":4000000,"z":540,"x":79.2,"y":106.9},{"i":"A-79","b":"A","n":"79","t":"residential","s":"reserved","p":2500000,"z":500,"x":91.6,"y":106.9},{"i":"A-80","b":"A","n":"80","t":"residential","s":"reserved","p":3500000,"z":648,"x":104.0,"y":106.9},{"i":"A-81","b":"A","n":"81","t":"residential","s":"sold","p":3000000,"z":600,"x":116.4,"y":106.9},{"i":"A-82","b":"A","n":"82","t":"residential","s":"available","p":4500000,"z":900,"x":128.8,"y":106.9},{"i":"A-83","b":"A","n":"83","t":"residential","s":"available","p":3500000,"z":600,"x":141.2,"y":106.9},{"i":"A-84","b":"A","n":"84","t":"residential","s":"reserved","p":2500000,"z":450,"x":153.6,"y":106.9},{"i":"A-C/2","b":"A","n":"C/2","t":"C","s":"available","p":6500000,"z":540,"x":166.0,"y":106.9},{"i":"A-85","b":"A","n":"85","t":"residential","s":"reserved","p":4500000,"z":450,"x":178.4,"y":106.9},{"i":"A-86","b":"A","n":"86","t":"residential","s":"reserved","p":3000000,"z":500,"x":190.8,"y":106.9},{"i":"A-87","b":"A","n":"87","t":"residential","s":"reserved","p":3000000,"z":500,"x":203.2,"y":106.9},{"i":"A-88","b":"A","n":"88","t":"residential","s":"sold","p":5000000,"z":648,"x":42.0,"y":116.3},{"i":"A-89","b":"A","n":"89","t":"residential","s":"available","p":5000000,"z":540,"x":54.4,"y":116.3},{"i":"A-90","b":"A","n":"90","t":"residential","s":"available","p":3500000,"z":450,"x":66.8,"y":116.3},{"i":"A-91","b":"A","n":"91","t":"residential","s":"available","p":2500000,"z":500,"x":79.2,"y":116.3},{"i":"A-92","b":"A","n":"92","t":"residential","s":"available","p":3000000,"z":500,"x":91.6,"y":116.3},{"i":"A-93","b":"A","n":"93","t":"residential","s":"available","p":4500000,"z":500,"x":104.0,"y":116.3},{"i":"A-94","b":"A","n":"94","t":"residential","s":"available","p":3500000,"z":900,"x":116.4,"y":116.3},{"i":"A-95","b":"A","n":"95","t":"residential","s":"available","p":3500000,"z":600,"x":128.8,"y":116.3},{"i":"A-96","b":"A","n":"96","t":"residential","s":"available","p":3500000,"z":648,"x":141.2,"y":116.3},{"i":"A-97","b":"A","n":"97","t":"residential","s":"sold","p":4500000,"z":600,"x":153.6,"y":116.3},{"i":"A-98","b":"A","n":"98","t":"residential","s":"available","p":3500000,"z":540,"x":166.0,"y":116.3},{"i":"A-99","b":"A","n":"99","t":"residential","s":"sold","p":4000000,"z":540,"x":178.4,"y":116.3},{"i":"A-100","b":"A","n":"100","t":"residential","s":"available","p":3500000,"z":900,"x":190.8,"y":116.3},{"i":"B-1","b":"B","n":"1","t":"residential","s":"sold","p":4000000,"z":648,"x":261.0,"y":50.5},{"i":"B-2","b":"B","n":"2","t":"residential","s":"available","p":3500000,"z":540,"x":273.4,"y":50.5},{"i":"B-3","b":"B","n":"3","t":"residential","s":"reserved","p":3000000,"z":540,"x":285.8,"y":50.5},{"i":"B-OS/1","b":"B","n":"OS/1","t":"OS","s":"available","p":2000000,"z":500,"x":298.2,"y":50.5},{"i":"B-4","b":"B","n":"4","t":"residential","s":"sold","p":3500000,"z":500,"x":310.6,"y":50.5},{"i":"B-5","b":"B","n":"5","t":"residential","s":"available","p":2500000,"z":540,"x":323.0,"y":50.5},{"i":"B-6","b":"B","n":"6","t":"residential","s":"available","p":5000000,"z":450,"x":335.4,"y":50.5},{"i":"B-7","b":"B","n":"7","t":"residential","s":"available","p":3500000,"z":648,"x":347.8,"y":50.5},{"i":"B-8","b":"B","n":"8","t":"residential","s":"available","p":3000000,"z":900,"x":360.2,"y":50.5},{"i":"B-9","b":"B","n":"9","t":"residential","s":"reserved","p":3500000,"z":500,"x":372.6,"y":50.5},{"i":"B-10","b":"B","n":"10","t":"residential","s":"available","p":4000000,"z":600,"x":385.0,"y":50.5},{"i":"B-11","b":"B","n":"11","t":"residential","s":"available","p":3500000,"z":540,"x":397.4,"y":50.5},{"i":"B-12","b":"B","n":"12","t":"residential","s":"available","p":4500000,"z":648,"x":409.8,"y":50.5},{"i":"B-13","b":"B","n":"13","t":"residential","s":"available","p":4500000,"z":648,"x":422.2,"y":50.5},{"i":"B-14","b":"B","n":"14","t":"residential","s":"sold","p":2500000,"z":900,"x":434.6,"y":50.5},{"i":"B-CR/1","b":"B","n":"CR/1","t":"CR","s":"available","p":6500000,"z":500,"x":261.0,"y":59.9},{"i":"B-15","b":"B","n":"15","t":"residential","s":"available","p":4000000,"z":500,"x":273.4,"y":59.9},{"i":"B-16","b":"B","n":"16","t":"residential","s":"available","p":4000000,"z":900,"x":285.8,"y":59.9},{"i":"B-17","b":"B","n":"17","t":"residential","s":"available","p":4000000,"z":600,"x":298.2,"y":59.9},{"i":"B-18","b":"B","n":"18","t":"residential","s":"reserved","p":5000000,"z":540,"x":310.6,"y":59.9},{"i":"B-19","b":"B","n":"19","t":"residential","s":"available","p":3500000,"z":648,"x":323.0,"y":59.9},{"i":"B-20","b":"B","n":"20","t":"residential","s":"reserved","p":2500000,"z":450,"x":335.4,"y":59.9},{"i":"B-21","b":"B","n":"21","t":"residential","s":"available","p":4000000,"z":540,"x":347.8,"y":59.9},{"i":"B-22","b":"B","n":"22","t":"residential","s":"available","p":5000000,"z":450,"x":360.2,"y":59.9},{"i":"B-23","b":"B","n":"23","t":"residential","s":"reserved","p":3000000,"z":540,"x":372.6,"y":59.9},{"i":"B-24","b":"B","n":"24","t":"residential","s":"reserved","p":4500000,"z":900,"x":385.0,"y":59.9},{"i":"B-25","b":"B","n":"25","t":"residential","s":"reserved","p":2500000,"z":900,"x":397.4,"y":59.9},{"i":"B-26","b":"B","n":"26","t":"residential","s":"sold","p":4000000,"z":648,"x":409.8,"y":59.9},{"i":"B-27","b":"B","n":"27","t":"residential","s":"available","p":3500000,"z":600,"x":422.2,"y":59.9},{"i":"B-28","b":"B","n":"28","t":"residential","s":"available","p":2500000,"z":500,"x":434.6,"y":59.9},{"i":"B-29","b":"B","n":"29","t":"residential","s":"sold","p":2500000,"z":500,"x":261.0,"y":69.3},{"i":"B-30","b":"B","n":"30","t":"residential","s":"available","p":5000000,"z":648,"x":273.4,"y":69.3},{"i":"B-C/1","b":"B","n":"C/1","t":"C","s":"sold","p":8000000,"z":600,"x":285.8,"y":69.3},{"i":"B-31","b":"B","n":"31","t":"residential","s":"available","p":4500000,"z":648,"x":298.2,"y":69.3},{"i":"B-C/2","b":"B","n":"C/2","t":"C","s":"available","p":8000000,"z":540,"x":310.6,"y":69.3},{"i":"B-32","b":"B","n":"32","t":"residential","s":"available","p":3000000,"z":600,"x":323.0,"y":69.3},{"i":"B-UT/1","b":"B","n":"UT/1","t":"UT","s":"sold","p":2500000,"z":600,"x":335.4,"y":69.3},{"i":"B-33","b":"B","n":"33","t":"residential","s":"sold","p":2500000,"z":540,"x":347.8,"y":69.3},{"i":"B-34","b":"B","n":"34","t":"residential","s":"sold","p":3500000,"z":900,"x":360.2,"y":69.3},{"i":"B-35","b":"B","n":"35","t":"residential","s":"reserved","p":3000000,"z":450,"x":372.6,"y":69.3},{"i":"B-36","b":"B","n":"36","t":"residential","s":"reserved","p":5000000,"z":900,"x":385.0,"y":69.3},{"i":"B-37","b":"B","n":"37","t":"residential","s":"sold","p":4000000,"z":500,"x":397.4,"y":69.3},{"i":"B-38","b":"B","n":"38","t":"residential","s":"available","p":2500000,"z":500,"x":409.8,"y":69.3},{"i":"B-39","b":"B","n":"39","t":"residential","s":"sold","p":5000000,"z":648,"x":422.2,"y":69.3},{"i":"B-40","b":"B","n":"40","t":"residential","s":"reserved","p":4000000,"z":540,"x":434.6,"y":69.3},{"i":"B-41","b":"B","n":"41","t":"residential","s":"reserved","p":4500000,"z":648,"x":261.0,"y":78.7},{"i":"B-42","b":"B","n":"42","t":"residential","s":"sold","p":3500000,"z":500,"x":273.4,"y":78.7},{"i":"B-43","b":"B","n":"43","t":"residential","s":"sold","p":2500000,"z":540,"x":285.8,"y":78.7},{"i":"B-44","b":"B","n":"44","t":"residential","s":"available","p":4000000,"z":600,"x":298.2,"y":78.7},{"i":"B-45","b":"B","n":"45","t":"residential","s":"sold","p":3500000,"z":450,"x":310.6,"y":78.7},{"i":"B-46","b":"B","n":"46","t":"residential","s":"sold","p":5000000,"z":540,"x":323.0,"y":78.7},{"i":"B-47","b":"B","n":"47","t":"residential","s":"sold","p":2500000,"z":900,"x":335.4,"y":78.7},{"i":"B-OS/2","b":"B","n":"OS/2","t":"OS","s":"available","p":2000000,"z":500,"x":347.8,"y":78.7},{"i":"B-48","b":"B","n":"48","t":"residential","s":"reserved","p":2500000,"z":648,"x":360.2,"y":78.7},{"i":"B-49","b":"B","n":"49","t":"residential","s":"available","p":2500000,"z":900,"x":372.6,"y":78.7},{"i":"B-50","b":"B","n":"50","t":"residential","s":"available","p":5000000,"z":450,"x":385.0,"y":78.7},{"i":"B-51","b":"B","n":"51","t":"residential","s":"reserved","p":4000000,"z":648,"x":397.4,"y":78.7},{"i":"B-52","b":"B","n":"52","t":"residential","s":"reserved","p":3500000,"z":648,"x":409.8,"y":78.7},{"i":"B-53","b":"B","n":"53","t":"residential","s":"available","p":2500000,"z":900,"x":422.2,"y":78.7},{"i":"B-54","b":"B","n":"54","t":"residential","s":"sold","p":3000000,"z":500,"x":434.6,"y":78.7},{"i":"B-55","b":"B","n":"55","t":"residential","s":"sold","p":3500000,"z":600,"x":261.0,"y":88.1},{"i":"B-56","b":"B","n":"56","t":"residential","s":"available","p":2500000,"z":648,"x":273.4,"y":88.1},{"i":"B-57","b":"B","n":"57","t":"residential","s":"available","p":4500000,"z":648,"x":285.8,"y":88.1},{"i":"B-58","b":"B","n":"58","t":"residential","s":"reserved","p":3000000,"z":450,"x":298.2,"y":88.1},{"i":"B-59","b":"B","n":"59","t":"residential","s":"available","p":3000000,"z":540,"x":310.6,"y":88.1},{"i":"B-P/1","b":"B","n":"P/1","t":"P","s":"available","p":1500000,"z":450,"x":323.0,"y":88.1},{"i":"B-60","b":"B","n":"60","t":"residential","s":"available","p":3500000,"z":900,"x":335.4,"y":88.1},{"i":"B-61","b":"B","n":"61","t":"residential","s":"available","p":4500000,"z":500,"x":347.8,"y":88.1},{"i":"B-62","b":"B","n":"62","t":"residential","s":"available","p":3000000,"z":648,"x":360.2,"y":88.1},{"i":"B-63","b":"B","n":"63","t":"residential","s":"available","p":4000000,"z":500,"x":372.6,"y":88.1},{"i":"B-64","b":"B","n":"64","t":"residential","s":"reserved","p":5000000,"z":540,"x":385.0,"y":88.1},{"i":"B-CR/2","b":"B","n":"CR/2","t":"CR","s":"available","p":8000000,"z":450,"x":397.4,"y":88.1},{"i":"B-65","b":"B","n":"65","t":"residential","s":"sold","p":5000000,"z":648,"x":409.8,"y":88.1},{"i":"B-66","b":"B","n":"66","t":"residential","s":"available","p":5000000,"z":540,"x":422.2,"y":88.1},{"i":"B-67","b":"B","n":"67","t":"residential","s":"sold","p":5000000,"z":600,"x":434.6,"y":88.1},{"i":"B-68","b":"B","n":"68","t":"residential","s":"reserved","p":2500000,"z":600,"x":261.0,"y":97.5},{"i":"B-69","b":"B","n":"69","t":"residential","s":"reserved","p":4000000,"z":500,"x":273.4,"y":97.5},{"i":"B-70","b":"B","n":"70","t":"residential","s":"sold","p":4500000,"z":648,"x":285.8,"y":97.5},{"i":"B-71","b":"B","n":"71","t":"residential","s":"sold","p":2500000,"z":540,"x":298.2,"y":97.5},{"i":"B-CR/3","b":"B","n":"CR/3","t":"CR","s":"sold","p":6500000,"z":648,"x":310.6,"y":97.5},{"i":"B-72","b":"B","n":"72","t":"residential","s":"sold","p":5000000,"z":450,"x":323.0,"y":97.5},{"i":"B-73","b":"B","n":"73","t":"residential","s":"sold","p":3000000,"z":648,"x":335.4,"y":97.5},{"i":"B-74","b":"B","n":"74","t":"residential","s":"reserved","p":3000000,"z":540,"x":347.8,"y":97.5},{"i":"B-75","b":"B","n":"75","t":"residential","s":"available","p":3500000,"z":900,"x":360.2,"y":97.5},{"i":"B-76","b":"B","n":"76","t":"residential","s":"available","p":2500000,"z":450,"x":372.6,"y":97.5},{"i":"B-77","b":"B","n":"77","t":"residential","s":"reserved","p":5000000,"z":648,"x":385.0,"y":97.5},{"i":"B-78","b":"B","n":"78","t":"residential","s":"available","p":2500000,"z":540,"x":397.4,"y":97.5},{"i":"B-79","b":"B","n":"79","t":"residential","s":"available","p":3000000,"z":450,"x":409.8,"y":97.5},{"i":"B-80","b":"B","n":"80","t":"residential","s":"sold","p":2500000,"z":648,"x":422.2,"y":97.5},{"i":"B-81","b":"B","n":"81","t":"residential","s":"available","p":4000000,"z":540,"x":434.6,"y":97.5},{"i":"B-82","b":"B","n":"82","t":"residential","s":"sold","p":2500000,"z":648,"x":261.0,"y":106.9},{"i":"B-83","b":"B","n":"83","t":"residential","s":"available","p":4500000,"z":450,"x":273.4,"y":106.9},{"i":"B-84","b":"B","n":"84","t":"residential","s":"available","p":5000000,"z":648,"x":285.8,"y":106.9},{"i":"B-85","b":"B","n":"85","t":"residential","s":"sold","p":3000000,"z":648,"x":298.2,"y":106.9},{"i":"B-86","b":"B","n":"86","t":"residential","s":"available","p":5000000,"z":648,"x":310.6,"y":106.9},{"i":"B-87","b":"B","n":"87","t":"residential","s":"available","p":3500000,"z":900,"x":323.0,"y":106.9},{"i":"B-88","b":"B","n":"88","t":"residential","s":"available","p":3500000,"z":540,"x":335.4,"y":106.9},{"i":"B-89","b":"B","n":"89","t":"residential","s":"sold","p":4000000,"z":600,"x":347.8,"y":106.9},{"i":"B-C/3","b":"B","n":"C/3","t":"C","s":"sold","p":6500000,"z":900,"x":360.2,"y":106.9},{"i":"B-90","b":"B","n":"90","t":"residential","s":"sold","p":4500000,"z":648,"x":372.6,"y":106.9},{"i":"B-91","b":"B","n":"91","t":"residential","s":"sold","p":3500000,"z":648,"x":385.0,"y":106.9},{"i":"B-92","b":"B","n":"92","t":"residential","s":"reserved","p":4500000,"z":648,"x":397.4,"y":106.9},{"i":"B-93","b":"B","n":"93","t":"residential","s":"available","p":2500000,"z":648,"x":409.8,"y":106.9},{"i":"B-94","b":"B","n":"94","t":"residential","s":"sold","p":2500000,"z":648,"x":422.2,"y":106.9},{"i":"B-95","b":"B","n":"95","t":"residential","s":"sold","p":5000000,"z":500,"x":434.6,"y":106.9},{"i":"B-96","b":"B","n":"96","t":"residential","s":"available","p":4500000,"z":450,"x":261.0,"y":116.3},{"i":"B-97","b":"B","n":"97","t":"residential","s":"reserved","p":3000000,"z":540,"x":273.4,"y":116.3},{"i":"B-98","b":"B","n":"98","t":"residential","s":"available","p":4000000,"z":540,"x":285.8,"y":116.3},{"i":"B-99","b":"B","n":"99","t":"residential","s":"sold","p":4000000,"z":600,"x":298.2,"y":116.3},{"i":"B-100","b":"B","n":"100","t":"residential","s":"available","p":3000000,"z":900,"x":310.6,"y":116.3},{"i":"B-CR/4","b":"B","n":"CR/4","t":"CR","s":"sold","p":6500000,"z":600,"x":323.0,"y":116.3},{"i":"B-101","b":"B","n":"101","t":"residential","s":"sold","p":5000000,"z":540,"x":335.4,"y":116.3},{"i":"B-102","b":"B","n":"102","t":"residential","s":"available","p":4500000,"z":500,"x":347.8,"y":116.3},{"i":"B-103","b":"B","n":"103","t":"residential","s":"reserved","p":4000000,"z":648,"x":360.2,"y":116.3},{"i":"B-104","b":"B","n":"104","t":"residential","s":"reserved","p":5000000,"z":450,"x":372.6,"y":116.3},{"i":"B-105","b":"B","n":"105","t":"residential","s":"sold","p":3000000,"z":540,"x":385.0,"y":116.3},{"i":"B-106","b":"B","n":"106","t":"residential","s":"available","p":3500000,"z":450,"x":397.4,"y":116.3},{"i":"B-107","b":"B","n":"107","t":"residential","s":"available","p":3000000,"z":600,"x":409.8,"y":116.3},{"i":"B-108","b":"B","n":"108","t":"residential","s":"available","p":2500000,"z":648,"x":422.2,"y":116.3},{"i":"B-109","b":"B","n":"109","t":"residential","s":"available","p":3500000,"z":648,"x":434.6,"y":116.3},{"i":"B-110","b":"B","n":"110","t":"residential","s":"reserved","p":3000000,"z":600,"x":261.0,"y":125.7}];
+const POLYS = ["36.051698989015115,46.0 47.948301010984885,46.051698989015115 48.0,54.948301010984885 36.051698989015115,55.0","48.45298637084392,46.0 60.34701362915608,46.05298637084392 60.4,54.94701362915608 48.45298637084392,55.0","60.85694052880736,46.0 72.74305947119264,46.05694052880736 72.8,54.94305947119264 60.85694052880736,55.0","73.40594644567562,46.0 84.99405355432438,46.20594644567562 85.2,54.79405355432438 73.40594644567562,55.0","85.65835829817712,46.0 97.54164170182287,46.058358298177126 97.6,54.941641701822874 85.65835829817712,55.0","98.23850304557982,46.0 109.76149695442018,46.238503045579826 110.0,54.761496954420174 98.23850304557982,55.0","110.47047397363474,46.0 122.32952602636527,46.070473973634726 122.4,54.929526026365274 110.47047397363474,55.0","122.8312747357493,46.0 134.7687252642507,46.03127473574931 134.8,54.96872526425069 122.8312747357493,55.0","135.37944099221966,46.0 147.02055900778032,46.17944099221966 147.2,54.82055900778034 135.37944099221966,55.0","147.66409353353262,46.0 159.53590646646742,46.064093533532606 159.60000000000002,54.935906466467394 147.66409353353262,55.0","160.20864090630945,46.0 171.79135909369055,46.208640906309455 172.0,54.791359093690545 160.20864090630945,55.0","172.59001748372546,46.0 184.20998251627455,46.19001748372545 184.4,54.80998251627455 172.59001748372546,55.0","184.8538893511372,46.0 196.7461106488628,46.0538893511372 196.8,54.9461106488628 184.8538893511372,55.0","197.44967595423012,46.0 208.95032404576992,46.24967595423009 209.20000000000002,54.75032404576991 197.44967595423012,55.0","36.01497390890399,55.4 47.98502609109601,55.41497390890399 48.0,64.38502609109602 36.01497390890399,64.4","48.4989474868348,55.4 60.301052513165196,55.4989474868348 60.4,64.3010525131652 48.4989474868348,64.4","60.884507216893034,55.4 72.71549278310697,55.484507216893036 72.8,64.31549278310698 60.884507216893034,64.4","73.45405940919254,55.4 84.94594059080747,55.65405940919254 85.2,64.14594059080747 73.45405940919254,64.4","85.6943333312868,55.4 97.50566666871319,55.494333331286796 97.6,64.3056666687132 85.6943333312868,64.4","98.28306477883092,55.4 109.71693522116908,55.68306477883092 110.0,64.11693522116909 98.28306477883092,64.4","110.47822125159584,55.4 122.32177874840417,55.47822125159583 122.4,64.32177874840417 110.47822125159584,64.4","123.09808105893552,55.4 134.5019189410645,55.698081058935514 134.8,64.10191894106448 123.09808105893552,64.4","135.46885819267757,55.4 146.9311418073224,55.668858192677575 147.2,64.13114180732242 135.46885819267757,64.4","147.82244320101023,55.4 159.37755679898981,55.62244320101022 159.60000000000002,64.17755679898978 147.82244320101023,64.4","160.1380585549086,55.4 171.8619414450914,55.538058554908595 172.0,64.26194144509141 160.1380585549086,64.4","172.6144624399988,55.4 184.18553756000122,55.614462439998796 184.4,64.18553756000121 172.6144624399988,64.4","185.02396886374223,55.4 196.5760311362578,55.62396886374221 196.8,64.17603113625779 185.02396886374223,64.4","197.32808086605706,55.4 209.07191913394297,55.52808086605704 209.20000000000002,64.27191913394297 197.32808086605706,64.4","36.24915670357938,64.8 47.75084329642062,65.04915670357938 48.0,73.55084329642061 36.24915670357938,73.8","48.46054113281937,64.8 60.339458867180625,64.86054113281938 60.4,73.73945886718062 48.46054113281937,73.8","60.86910776349853,64.8 72.73089223650146,64.86910776349853 72.8,73.73089223650146 60.86910776349853,73.8","73.2112824647529,64.8 85.18871753524711,64.81128246475289 85.2,73.7887175352471 73.2112824647529,73.8","85.64334285988906,64.8 97.55665714011093,64.84334285988906 97.6,73.75665714011093 85.64334285988906,73.8","98.02785552884838,64.8 109.97214447115162,64.82785552884837 110.0,73.77214447115162 98.02785552884838,73.8","110.64862085175162,64.8 122.1513791482484,65.04862085175161 122.4,73.55137914824839 110.64862085175162,73.8","123.09115637996486,64.8 134.50884362003515,65.09115637996486 134.8,73.50884362003514 123.09115637996486,73.8","135.21724041321667,64.8 147.1827595867833,64.81724041321668 147.2,73.78275958678331 135.21724041321667,73.8","147.84427907608787,64.8 159.35572092391217,65.04427907608785 159.60000000000002,73.55572092391215 147.84427907608787,73.8","160.13807508172863,64.8 171.86192491827137,64.93807508172861 172.0,73.66192491827138 160.13807508172863,73.8","172.53962314491906,64.8 184.26037685508095,64.93962314491905 184.4,73.66037685508094 172.53962314491906,73.8","184.90981894487362,64.8 196.6901810551264,64.90981894487359 196.8,73.6901810551264 184.90981894487362,73.8","197.46282695884287,64.8 208.93717304115717,65.06282695884283 209.20000000000002,73.53717304115716 197.46282695884287,73.8","36.05393749151318,74.2 47.94606250848682,74.25393749151318 48.0,83.14606250848682 36.05393749151318,83.2","48.421090828915546,74.2 60.37890917108445,74.22109082891555 60.4,83.17890917108446 48.421090828915546,83.2","60.85184957835287,74.2 72.74815042164713,74.25184957835287 72.8,83.14815042164713 60.85184957835287,83.2","73.46408254964601,74.2 84.935917450354,74.46408254964601 85.2,82.935917450354 73.46408254964601,83.2","85.65183252619055,74.2 97.54816747380944,74.25183252619055 97.6,83.14816747380945 85.65183252619055,83.2","98.06140478187052,74.2 109.93859521812948,74.26140478187052 110.0,83.13859521812948 98.06140478187052,83.2","110.53925987796622,74.2 122.2607401220338,74.33925987796621 122.4,83.06074012203379 110.53925987796622,83.2","122.98915456531448,74.2 134.61084543468553,74.38915456531448 134.8,83.01084543468552 122.98915456531448,83.2","135.21923050847715,74.2 147.18076949152282,74.21923050847715 147.2,83.18076949152285 135.21923050847715,83.2","147.89502573049313,74.2 159.3049742695069,74.4950257304931 159.60000000000002,82.90497426950691 147.89502573049313,83.2","160.02741463734907,74.2 171.97258536265093,74.22741463734909 172.0,83.17258536265092 160.02741463734907,83.2","172.64546052984318,74.2 184.15453947015683,74.44546052984319 184.4,82.95453947015682 172.64546052984318,83.2","184.95626490563916,74.2 196.64373509436086,74.35626490563914 196.8,83.04373509436087 184.95626490563916,83.2","197.4762448442861,74.2 208.92375515571393,74.47624484428607 209.20000000000002,82.92375515571393 197.4762448442861,83.2","36.1950134706281,83.6 47.8049865293719,83.79501347062809 48.0,92.4049865293719 36.1950134706281,92.6","48.576565500621285,83.6 60.22343449937871,83.77656550062129 60.4,92.4234344993787 48.576565500621285,92.6","60.947508462306274,83.6 72.65249153769372,83.74750846230627 72.8,92.45249153769372 60.947508462306274,92.6","73.32676274415421,83.6 85.0732372558458,83.7267627441542 85.2,92.47323725584579 73.32676274415421,92.6","85.83734257713367,83.6 97.36265742286632,83.83734257713367 97.6,92.36265742286632 85.83734257713367,92.6","98.16318839813061,83.6 109.83681160186939,83.76318839813061 110.0,92.43681160186938 98.16318839813061,92.6","110.60040775075208,83.6 122.19959224924793,83.80040775075207 122.4,92.39959224924792 110.60040775075208,92.6","122.89620820693813,83.6 134.7037917930619,83.69620820693812 134.8,92.50379179306186 122.89620820693813,92.6","135.3887322182796,83.6 147.01126778172036,83.78873221827962 147.2,92.41126778172037 135.3887322182796,92.6","147.81382711122876,83.6 159.38617288877128,83.81382711122875 159.60000000000002,92.38617288877124 147.81382711122876,92.6","160.27410825308885,83.6 171.72589174691115,83.87410825308886 172.0,92.32589174691113 160.27410825308885,92.6","172.52032431851265,83.6 184.27967568148736,83.72032431851262 184.4,92.47967568148736 172.52032431851265,92.6","185.02697980708456,83.6 196.57302019291546,83.82697980708454 196.8,92.37302019291545 185.02697980708456,92.6","197.43678091436664,83.6 208.9632190856334,83.83678091436663 209.20000000000002,92.36321908563336 197.43678091436664,92.6","36.2285298152147,93.0 47.7714701847853,93.2285298152147 48.0,101.7714701847853 36.2285298152147,102.0","48.40565320356709,93.0 60.394346796432906,93.00565320356709 60.4,101.99434679643291 48.40565320356709,102.0","60.97353636285721,93.0 72.62646363714278,93.17353636285722 72.8,101.82646363714278 60.97353636285721,102.0","73.34339099320161,93.0 85.0566090067984,93.1433909932016 85.2,101.8566090067984 73.34339099320161,102.0","85.69142641366018,93.0 97.5085735863398,93.09142641366019 97.6,101.90857358633981 85.69142641366018,102.0","98.09755226044747,93.0 109.90244773955253,93.09755226044747 110.0,101.90244773955253 98.09755226044747,102.0","110.41367307902497,93.0 122.38632692097504,93.01367307902497 122.4,101.98632692097503 110.41367307902497,102.0","123.07545096059125,93.0 134.52454903940875,93.27545096059126 134.8,101.72454903940874 123.07545096059125,102.0","135.34040717756935,93.0 147.05959282243063,93.14040717756936 147.2,101.85959282243064 135.34040717756935,102.0","147.82425797800042,93.0 159.37574202199963,93.22425797800041 159.60000000000002,101.77574202199959 147.82425797800042,102.0","160.09840245309925,93.0 171.90159754690075,93.09840245309925 172.0,101.90159754690075 160.09840245309925,102.0","172.42734403860888,93.0 184.37265596139113,93.02734403860887 184.4,101.97265596139113 172.42734403860888,102.0","184.86668309047457,93.0 196.73331690952546,93.06668309047456 196.8,101.93331690952544 184.86668309047457,102.0","197.39304550744228,93.0 209.00695449255775,93.19304550744228 209.20000000000002,101.80695449255772 197.39304550744228,102.0","36.07231313691196,102.4 47.92768686308804,102.47231313691196 48.0,111.32768686308805 36.07231313691196,111.4","48.41938400368776,102.4 60.38061599631224,102.41938400368777 60.4,111.38061599631224 48.41938400368776,111.4","61.08645650263733,102.4 72.51354349736266,102.68645650263734 72.8,111.11354349736267 61.08645650263733,111.4","73.23815117971337,102.4 85.16184882028664,102.43815117971337 85.2,111.36184882028664 73.23815117971337,111.4","85.8568433315475,102.4 97.3431566684525,102.6568433315475 97.6,111.1431566684525 85.8568433315475,111.4","98.11421119756888,102.4 109.88578880243112,102.51421119756888 110.0,111.28578880243113 98.11421119756888,111.4","110.55068299292303,102.4 122.24931700707698,102.55068299292303 122.4,111.24931700707698 110.55068299292303,111.4","123.01828828287744,102.4 134.58171171712257,102.61828828287744 134.8,111.18171171712257 123.01828828287744,111.4","135.24194923271398,102.4 147.158050767286,102.441949232714 147.2,111.35805076728602 135.24194923271398,111.4","147.87156293893125,102.4 159.3284370610688,102.67156293893125 159.60000000000002,111.12843706106877 147.87156293893125,111.4","160.2698202938013,102.4 171.7301797061987,102.66982029380132 172.0,111.13017970619869 160.2698202938013,111.4","172.5289644153645,102.4 184.2710355846355,102.52896441536451 184.4,111.2710355846355 172.5289644153645,111.4","184.98375697617462,102.4 196.6162430238254,102.5837569761746 196.8,111.21624302382541 184.98375697617462,111.4","197.48343177733602,102.4 208.916568222664,102.68343177733601 209.20000000000002,111.116568222664 197.48343177733602,111.4","36.09015244936883,111.8 47.90984755063117,111.89015244936883 48.0,120.70984755063117 36.09015244936883,120.8","48.438829465828405,111.8 60.36117053417159,111.83882946582841 60.4,120.76117053417158 48.438829465828405,120.8","61.03536664986761,111.8 72.56463335013238,112.03536664986761 72.8,120.56463335013238 61.03536664986761,120.8","73.46298805764401,111.8 84.937011942356,112.062988057644 85.2,120.53701194235599 73.46298805764401,120.8","85.77749571238836,111.8 97.42250428761163,111.97749571238836 97.6,120.62250428761163 85.77749571238836,120.8","98.02465898867727,111.8 109.97534101132273,111.82465898867727 110.0,120.77534101132272 98.02465898867727,120.8","110.478797378618,111.8 122.32120262138201,111.87879737861799 122.4,120.721202621382 110.478797378618,120.8","122.82835408154523,111.8 134.77164591845477,111.82835408154523 134.8,120.77164591845477 122.82835408154523,120.8","135.493532671727,111.8 146.90646732827298,112.09353267172702 147.2,120.50646732827298 135.493532671727,120.8","147.65100460811925,111.8 159.5489953918808,111.85100460811923 159.60000000000002,120.74899539188077 147.65100460811925,120.8","160.17526378333804,111.8 171.82473621666196,111.97526378333802 172.0,120.62473621666197 160.17526378333804,120.8","172.56392506886513,111.8 184.23607493113488,111.96392506886514 184.4,120.63607493113486 172.56392506886513,120.8","184.99036450792647,111.8 196.60963549207355,111.99036450792647 196.8,120.60963549207352 184.99036450792647,120.8","255.0876315446107,46.0 266.9123684553893,46.08763154461071 267.0,54.91236845538929 255.0876315446107,55.0","267.4421567773941,46.0 279.3578432226059,46.04215677739409 279.4,54.95784322260591 267.4421567773941,55.0","280.0039657996864,46.0 291.5960342003136,46.20396579968639 291.8,54.79603420031361 280.0039657996864,55.0","292.2997435643587,46.0 304.10025643564126,46.099743564358725 304.2,54.900256435641275 292.2997435643587,55.0","304.6047971947282,46.0 316.59520280527187,46.004797194728134 316.6,54.995202805271866 304.6047971947282,55.0","317.1060997805285,46.0 328.8939002194715,46.10609978052852 329.0,54.89390021947148 317.1060997805285,55.0","329.55103364176455,46.0 341.2489663582354,46.15103364176456 341.4,54.84896635823544 329.55103364176455,55.0","342.07201076504606,46.0 353.52798923495396,46.27201076504607 353.8,54.72798923495393 342.07201076504606,55.0","354.23978558052204,46.0 366.16021441947794,46.03978558052206 366.2,54.96021441947794 354.23978558052204,55.0","366.6555424613972,46.0 378.54445753860284,46.0555424613972 378.6,54.9444575386028 366.6555424613972,55.0","379.2674806439046,46.0 390.7325193560954,46.26748064390461 391.0,54.73251935609539 379.2674806439046,55.0","391.4143834339113,46.0 403.38561656608863,46.01438343391134 403.4,54.98561656608866 391.4143834339113,55.0","404.05464781890936,46.0 415.54535218109066,46.254647818909326 415.8,54.745352181090674 404.05464781890936,55.0","416.3152452328229,46.0 428.0847547671772,46.115245232822865 428.20000000000005,54.884754767177135 416.3152452328229,55.0","428.73181589849503,46.0 440.468184101505,46.131815898495034 440.6,54.868184101504966 428.73181589849503,55.0","255.08226569834892,55.4 266.9177343016511,55.48226569834892 267.0,64.31773430165109 255.08226569834892,64.4","267.4836728184265,55.4 279.31632718157346,55.48367281842652 279.4,64.31632718157348 267.4836728184265,64.4","279.89955150768884,55.4 291.7004484923112,55.49955150768884 291.8,64.30044849231116 279.89955150768884,64.4","292.2781579718533,55.4 304.12184202814666,55.478157971853335 304.2,64.32184202814666 292.2781579718533,64.4","304.6291319509333,55.4 316.57086804906675,55.42913195093328 316.6,64.37086804906671 304.6291319509333,64.4","317.15160100443313,55.4 328.84839899556687,55.55160100443312 329.0,64.24839899556689 317.15160100443313,64.4","329.64638872441117,55.4 341.1536112755888,55.646388724411196 341.4,64.1536112755888 329.64638872441117,64.4","341.8069833871465,55.4 353.79301661285353,55.40698338714648 353.8,64.39301661285353 341.8069833871465,64.4","354.28070399504816,55.4 366.1192960049518,55.48070399504816 366.2,64.31929600495184 354.28070399504816,64.4","366.87142288782513,55.4 378.3285771121749,55.671422887825095 378.6,64.12857711217491 366.87142288782513,64.4","379.19102726036374,55.4 390.80897273963626,55.591027260363745 391.0,64.20897273963625 379.19102726036374,64.4","391.47312399088645,55.4 403.3268760091135,55.47312399088644 403.4,64.32687600911356 391.47312399088645,64.4","404.0907662303718,55.4 415.5092337696282,55.6907662303718 415.8,64.1092337696282 404.0907662303718,64.4","416.31553455620883,55.4 428.08446544379126,55.515534556208806 428.20000000000005,64.2844654437912 416.31553455620883,64.4","428.83279855886076,55.4 440.3672014411393,55.632798558860735 440.6,64.16720144113927 428.83279855886076,64.4","255.12323759124763,64.8 266.87676240875237,64.92323759124761 267.0,73.67676240875238 255.12323759124763,73.8","267.64319806850796,64.8 279.156801931492,65.04319806850795 279.4,73.55680193149205 267.64319806850796,73.8","279.84732647563567,64.8 291.75267352436435,64.84732647563564 291.8,73.75267352436435 279.84732647563567,73.8","292.2898669074788,64.8 304.11013309252115,64.88986690747882 304.2,73.71013309252118 292.2898669074788,73.8","304.6941737981785,64.8 316.50582620182155,64.89417379817846 316.6,73.70582620182154 304.6941737981785,73.8","317.0595744809571,64.8 328.9404255190429,64.85957448095712 329.0,73.74042551904287 317.0595744809571,73.8","329.6381109010676,64.8 341.16188909893236,65.03811090106764 341.4,73.56188909893235 329.6381109010676,73.8","341.94134292683657,64.8 353.65865707316345,64.94134292683653 353.8,73.65865707316347 341.94134292683657,73.8","354.40832686981213,64.8 365.99167313018785,65.00832686981215 366.2,73.59167313018784 354.40832686981213,73.8","366.7774218691163,64.8 378.4225781308837,64.97742186911627 378.6,73.62257813088372 366.7774218691163,73.8","379.1505700143674,64.8 390.8494299856326,64.95057001436743 391.0,73.64942998563257 379.1505700143674,73.8","391.69584774508377,64.8 403.1041522549162,65.09584774508379 403.4,73.5041522549162 391.69584774508377,73.8","403.951582727793,64.8 415.64841727220704,64.95158272779295 415.8,73.64841727220704 403.951582727793,73.8","416.3039711495149,64.8 428.0960288504852,64.90397114951485 428.20000000000005,73.69602885048515 416.3039711495149,73.8","428.74641025298,64.8 440.45358974702003,64.94641025297999 440.6,73.65358974702 428.74641025298,73.8","255.14796239640495,74.2 266.8520376035951,74.34796239640494 267.0,83.05203760359507 255.14796239640495,83.2","267.4551158402655,74.2 279.3448841597345,74.2551158402655 279.4,83.1448841597345 267.4551158402655,83.2","279.8367161846007,74.2 291.76328381539935,74.23671618460067 291.8,83.16328381539934 279.8367161846007,83.2","292.2368239288113,74.2 304.1631760711887,74.23682392881133 304.2,83.16317607118867 292.2368239288113,83.2","304.6879385152388,74.2 316.51206148476126,74.28793851523875 316.6,83.11206148476126 304.6879385152388,83.2","317.10868494431844,74.2 328.89131505568156,74.30868494431846 329.0,83.09131505568155 317.10868494431844,83.2","329.6019161598842,74.2 341.19808384011577,74.40191615988421 341.4,82.9980838401158 329.6019161598842,83.2","342.056776259573,74.2 353.54322374042704,74.456776259573 353.8,82.943223740427 342.056776259573,83.2","354.4136584658954,74.2 365.98634153410455,74.41365846589544 366.2,82.98634153410457 354.4136584658954,83.2","366.86890549995127,74.2 378.3310945000488,74.46890549995125 378.6,82.93109450004876 366.86890549995127,83.2","379.1492332340789,74.2 390.8507667659211,74.34923323407888 391.0,83.05076676592113 379.1492332340789,83.2","391.66501042930105,74.2 403.1349895706989,74.46501042930106 403.4,82.93498957069895 391.66501042930105,83.2","403.93664239683676,74.2 415.66335760316326,74.33664239683675 415.8,83.06335760316325 403.93664239683676,83.2","416.4575012281357,74.2 427.9424987718644,74.45750122813568 428.20000000000005,82.94249877186432 416.4575012281357,83.2","428.8607811719018,74.2 440.33921882809824,74.46078117190179 440.6,82.93921882809822 428.8607811719018,83.2","255.19459223000965,83.6 266.8054077699904,83.79459223000964 267.0,92.40540776999035 255.19459223000965,92.6","267.69037503266816,83.6 279.1096249673318,83.89037503266817 279.4,92.30962496733181 267.69037503266816,92.6","279.90644079632983,83.6 291.6935592036702,83.7064407963298 291.8,92.49355920367019 279.90644079632983,92.6","292.321823895883,83.6 304.07817610411695,83.72182389588302 304.2,92.47817610411697 292.321823895883,92.6","304.83220158249065,83.6 316.3677984175094,83.83220158249061 316.6,92.36779841750938 304.83220158249065,92.6","317.03579284347774,83.6 328.96420715652226,83.63579284347774 329.0,92.56420715652224 317.03579284347774,92.6","329.5824882543807,83.6 341.2175117456193,83.78248825438071 341.4,92.41751174561928 329.5824882543807,92.6","341.90448964238516,83.6 353.69551035761486,83.70448964238514 353.8,92.49551035761485 341.90448964238516,92.6","354.3043477328334,83.6 366.0956522671666,83.70434773283337 366.2,92.49565226716662 354.3043477328334,92.6","366.73686225653,83.6 378.46313774347004,83.73686225652996 378.6,92.46313774347003 366.73686225653,92.6","379.2099679809063,83.6 390.7900320190937,83.80996798090628 391.0,92.39003201909371 379.2099679809063,92.6","391.67108789459456,83.6 403.1289121054054,83.87108789459455 403.4,92.32891210540544 391.67108789459456,92.6","404.04461299303665,83.6 415.5553870069634,83.8446129930366 415.8,92.35538700696338 404.04461299303665,92.6","416.2777298541971,83.6 428.122270145803,83.67772985419707 428.20000000000005,92.52227014580292 416.2777298541971,92.6","428.6492340749308,83.6 440.55076592506924,83.64923407493075 440.6,92.55076592506924 428.6492340749308,92.6","255.04889245896956,93.0 266.9511075410304,93.04889245896956 267.0,101.95110754103044 255.04889245896956,102.0","267.68285158469706,93.0 279.1171484153029,93.28285158469708 279.4,101.71714841530292 267.68285158469706,102.0","280.0044757882764,93.0 291.5955242117236,93.20447578827637 291.8,101.79552421172363 280.0044757882764,102.0","292.27475206938567,93.0 304.1252479306143,93.07475206938568 304.2,101.92524793061432 292.27475206938567,102.0","304.65801689169115,93.0 316.5419831083089,93.05801689169111 316.6,101.94198310830889 304.65801689169115,102.0","317.1788559233336,93.0 328.8211440766664,93.17885592333356 329.0,101.82114407666644 317.1788559233336,102.0","329.69832957831585,93.0 341.1016704216841,93.29832957831589 341.4,101.70167042168411 329.69832957831585,102.0","341.91526959097456,93.0 353.68473040902546,93.11526959097458 353.8,101.88473040902542 341.91526959097456,102.0","354.4141779770435,93.0 365.9858220229565,93.21417797704349 366.2,101.78582202295651 354.4141779770435,102.0","366.88922456881755,93.0 378.3107754311825,93.28922456881753 378.6,101.71077543118247 366.88922456881755,102.0","379.13396631608634,93.0 390.86603368391366,93.13396631608636 391.0,101.86603368391364 379.13396631608634,102.0","391.5675442029171,93.0 403.2324557970829,93.16754420291713 403.4,101.83245579708287 391.5675442029171,102.0","404.02291149145105,93.0 415.57708850854897,93.22291149145103 415.8,101.77708850854897 404.02291149145105,102.0","416.4091726776982,93.0 427.99082732230187,93.20917267769818 428.20000000000005,101.79082732230182 416.4091726776982,102.0","428.6444556131048,93.0 440.55554438689524,93.04445561310479 440.6,101.95554438689521 428.6444556131048,102.0","255.1672520426217,102.4 266.8327479573783,102.5672520426217 267.0,111.23274795737831 255.1672520426217,111.4","267.5469623398851,102.4 279.25303766011484,102.54696233988511 279.4,111.2530376601149 267.5469623398851,111.4","279.9133265144365,102.4 291.6866734855635,102.5133265144365 291.8,111.28667348556351 279.9133265144365,111.4","292.3310533861348,102.4 304.0689466138652,102.53105338613483 304.2,111.26894661386518 292.3310533861348,111.4","304.8714073088167,102.4 316.32859269118336,102.67140730881664 316.6,111.12859269118337 304.8714073088167,111.4","317.1910016000181,102.4 328.8089983999819,102.59100160001813 329.0,111.20899839998188 317.1910016000181,111.4","329.54265510189674,102.4 341.2573448981032,102.54265510189674 341.4,111.25734489810327 329.54265510189674,111.4","341.97514254998214,102.4 353.6248574500179,102.57514254998215 353.8,111.22485745001786 341.97514254998214,111.4","354.4353093636371,102.4 365.9646906363629,102.6353093636371 366.2,111.1646906363629 354.4353093636371,111.4","366.6136742499819,102.4 378.58632575001815,102.41367424998185 378.6,111.38632575001816 366.6136742499819,111.4","379.1167383206241,102.4 390.8832616793759,102.51673832062413 391.0,111.28326167937588 379.1167383206241,111.4","391.4959714196726,102.4 403.3040285803273,102.49597141967264 403.4,111.30402858032737 391.4959714196726,111.4","404.0547507122007,102.4 415.5452492877993,102.6547507122007 415.8,111.14524928779932 404.0547507122007,111.4","416.2096586180746,102.4 428.19034138192546,102.40965861807459 428.20000000000005,111.39034138192542 416.2096586180746,111.4","428.71015476388413,102.4 440.4898452361159,102.51015476388412 440.6,111.2898452361159 428.71015476388413,111.4","255.19985468106302,111.8 266.800145318937,111.99985468106301 267.0,120.60014531893698 255.19985468106302,120.8","267.62757849476094,111.8 279.172421505239,112.02757849476095 279.4,120.57242150523905 267.62757849476094,120.8","279.88106904282245,111.8 291.7189309571776,111.88106904282245 291.8,120.71893095717755 279.88106904282245,120.8","292.3308657948433,111.8 304.0691342051567,111.93086579484329 304.2,120.66913420515671 292.3308657948433,120.8","304.68687138017515,111.8 316.5131286198249,111.88687138017515 316.6,120.71312861982484 304.68687138017515,120.8","317.26426498934137,111.8 328.73573501065863,112.06426498934135 329.0,120.53573501065864 317.26426498934137,120.8","329.50803678441497,111.8 341.291963215585,111.908036784415 341.4,120.69196321558499 329.50803678441497,120.8","341.9220783980949,111.8 353.6779216019051,111.92207839809492 353.8,120.67792160190507 341.9220783980949,120.8","354.45000005765934,111.8 365.94999994234064,112.05000005765933 366.2,120.54999994234066 354.45000005765934,120.8","366.72503214793784,111.8 378.4749678520622,111.92503214793784 378.6,120.67496785206215 366.72503214793784,120.8","379.2093388471293,111.8 390.7906611528707,112.0093388471293 391.0,120.5906611528707 379.2093388471293,120.8","391.49183299884726,111.8 403.3081670011527,111.89183299884728 403.4,120.70816700115272 391.49183299884726,120.8","404.09946211207114,111.8 415.5005378879289,112.09946211207111 415.8,120.50053788792889 404.09946211207114,120.8","416.3408390918045,111.8 428.05916090819557,111.94083909180446 428.20000000000005,120.65916090819553 416.3408390918045,120.8","428.8398169431607,111.8 440.36018305683933,112.03981694316069 440.6,120.5601830568393 428.8398169431607,120.8","255.02683090519224,121.2 266.97316909480776,121.22683090519226 267.0,130.17316909480775 255.02683090519224,130.2"];
+const BLOCKS = {"A":{"cx":121.87,"cy":83.1,"count":111,"types":{"residential":100,"P":2,"UT":1,"CR":5,"C":2,"OS":1}},"B":{"cx":347.08,"cy":83.75,"count":121,"types":{"residential":110,"OS":2,"CR":4,"C":3,"UT":1,"P":1}}};
+const ESTATE_NAME = "New Town Estate";
+const ESTATE_LOC = "Golf Course Road, GRA, Enugu";
+const ESTATE_INITIALS = "NT";
+const SVG_W = 600, SVG_H = 400;
+
+// ═══ STATUS & TYPE COLORS ═══
+const SC = {
+  available: {fill:'#22c55e',fillOp:.72,stroke:'#15803d',strokeOp:.85},
+  sold:      {fill:'#ef4444',fillOp:.65,stroke:'#b91c1c',strokeOp:.8},
+  reserved:  {fill:'#eab308',fillOp:.65,stroke:'#a16207',strokeOp:.8}
+};
+const TC = {
+  CR:  {fill:'#3b82f6',fillOp:.55,stroke:'#1d4ed8',strokeOp:.7},
+  C:   {fill:'#8b5cf6',fillOp:.55,stroke:'#6d28d9',strokeOp:.7},
+  IN:  {fill:'#f97316',fillOp:.55,stroke:'#c2410c',strokeOp:.7},
+  UT:  {fill:'#a78bfa',fillOp:.45,stroke:'#7c3aed',strokeOp:.6},
+  OS:  {fill:'#34d399',fillOp:.4,stroke:'#059669',strokeOp:.6},
+  P:   {fill:'#f472b6',fillOp:.45,stroke:'#db2777',strokeOp:.6},
+  SP:  {fill:'#fbbf24',fillOp:.5,stroke:'#d97706',strokeOp:.7}
+};
+function gc(p){ const t=p.t.toUpperCase(); return TC[t]||SC[p.s]||SC.available; }
+function fmt(n){ return '\u20A6'+n.toLocaleString(); }
+function tn(t){ const m={residential:'Residential',CR:'Commercial/Residential',C:'Commercial',IN:'Industrial',UT:'Utility',OS:'Open Space',P:'Public Use',SP:'Special'}; return m[t]||t; }
+
+// ═══ PAN & ZOOM ═══
+const root=document.getElementById('map-root'), wrap=document.getElementById('wrap');
+let scale=1,panX=0,panY=0,isDragging=false,dragMoved=false,dragStart={x:0,y:0};
+let selIdx=-1,activeBlock=null,statusFilter='all';
+const plotLayer=document.getElementById('plot-layer');
+const blockLabels=document.getElementById('block-labels');
+
+function applyTransform(){
+  wrap.style.transform=`translate(${panX}px,${panY}px) scale(${scale})`;
+  const pct=document.querySelector('.zoom-pct');
+  if(pct) pct.textContent=Math.round(scale*100)+'%';
+}
+function zoomAt(cx,cy,factor){
+  const ns=Math.max(.3,Math.min(25,scale*factor));
+  panX=cx-(cx-panX)*(ns/scale);
+  panY=cy-(cy-panY)*(ns/scale);
+  scale=ns;
+  applyTransform();
+}
+function fitView(){
+  const vw=window.innerWidth,vh=window.innerHeight;
+  scale=Math.min(vw/SVG_W,vh/SVG_H)*.95;
+  panX=(vw-SVG_W*scale)/2;
+  panY=(vh-SVG_H*scale)/2;
+  applyTransform();
+}
+
+// Mouse wheel
+root.addEventListener('wheel',e=>{
+  e.preventDefault();
+  zoomAt(e.clientX,e.clientY,e.deltaY<0?1.12:1/1.12);
+},{passive:false});
+
+// Mouse drag
+root.addEventListener('mousedown',e=>{
+  if(e.button!==0)return;
+  isDragging=true;dragMoved=false;
+  dragStart={x:e.clientX-panX,y:e.clientY-panY};
+  root.classList.add('dragging');
+});
+window.addEventListener('mousemove',e=>{
+  if(!isDragging)return;
+  const dx=e.clientX-dragStart.x-panX,dy=e.clientY-dragStart.y-panY;
+  if(Math.abs(dx)>3||Math.abs(dy)>3) dragMoved=true;
+  panX=e.clientX-dragStart.x;
+  panY=e.clientY-dragStart.y;
+  applyTransform();
+});
+window.addEventListener('mouseup',()=>{
+  isDragging=false;
+  root.classList.remove('dragging');
+});
+
+// Touch
+let lastTouchDist=0;
+root.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){
+    isDragging=true;dragMoved=false;
+    dragStart={x:e.touches[0].clientX-panX,y:e.touches[0].clientY-panY};
+  } else if(e.touches.length===2){
+    lastTouchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+  }
+},{passive:false});
+root.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(e.touches.length===1&&isDragging){
+    const dx=e.touches[0].clientX-dragStart.x-panX;
+    const dy=e.touches[0].clientY-dragStart.y-panY;
+    if(Math.abs(dx)>3||Math.abs(dy)>3) dragMoved=true;
+    panX=e.touches[0].clientX-dragStart.x;
+    panY=e.touches[0].clientY-dragStart.y;
+    applyTransform();
+  } else if(e.touches.length===2){
+    const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    if(lastTouchDist>0){
+      const cx=(e.touches[0].clientX+e.touches[1].clientX)/2;
+      const cy=(e.touches[0].clientY+e.touches[1].clientY)/2;
+      zoomAt(cx,cy,d/lastTouchDist);
+    }
+    lastTouchDist=d;
+  }
+},{passive:false});
+root.addEventListener('touchend',()=>{ isDragging=false;lastTouchDist=0; });
+
+// Double click
+root.addEventListener('dblclick',e=>{ zoomAt(e.clientX,e.clientY,2.5); });
+
+// Keyboard
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT')return;
+  switch(e.key){
+    case'+':case'=':zoomAt(window.innerWidth/2,window.innerHeight/2,1.3);break;
+    case'-':zoomAt(window.innerWidth/2,window.innerHeight/2,1/1.3);break;
+    case'0':fitView();break;
+    case'Escape':closePanel();break;
+    case'ArrowUp':panY+=60;applyTransform();break;
+    case'ArrowDown':panY-=60;applyTransform();break;
+    case'ArrowLeft':panX+=60;applyTransform();break;
+    case'ArrowRight':panX-=60;applyTransform();break;
+  }
+});
+
+// ═══ RENDER PLOTS ═══
+function renderPlots(){
+  PLOTS.forEach((p,i)=>{
+    const poly=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    poly.setAttribute('points',POLYS[i]);
+    poly.setAttribute('data-idx',i);
+    poly.classList.add('plot-poly');
+    const c=gc(p);
+    poly.setAttribute('fill',c.fill);
+    poly.setAttribute('fill-opacity',c.fillOp);
+    poly.setAttribute('stroke',c.stroke);
+    poly.setAttribute('stroke-opacity',c.strokeOp);
+    poly.setAttribute('stroke-width','0.5');
+    // Hide if filtered
+    if(activeBlock&&p.b!==activeBlock) poly.style.display='none';
+    if(statusFilter!=='all'&&p.s!==statusFilter) poly.style.display='none';
+    plotLayer.appendChild(poly);
+  });
+}
+
+// ═══ RENDER BLOCK LABELS ═══
+function renderBlockLabels(){
+  Object.entries(BLOCKS).forEach(([id,b])=>{
+    const txt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    txt.setAttribute('x',b.cx);
+    txt.setAttribute('y',b.cy);
+    txt.setAttribute('text-anchor','middle');
+    txt.setAttribute('dominant-baseline','central');
+    txt.classList.add('block-label');
+    const fs=b.count>200?16:b.count>50?14:12;
+    txt.setAttribute('font-size',fs);
+    txt.textContent='Block '+id;
+    blockLabels.appendChild(txt);
+  });
+}
+
+// ═══ TOOLTIP ═══
+const tip=document.getElementById('tip');
+function showTip(e,p){
+  tip.innerHTML=`<div class="tip-head"><span class="tip-id">${p.i}</span><span class="tip-badge ${p.s}">${p.s}</span></div><div class="tip-meta">${tn(p.t)} \u00b7 ${p.z}m\u00b2 \u00b7 Block ${p.b}</div>`;
+  tip.classList.add('on');
+  const x=Math.min(e.clientX+16,window.innerWidth-230);
+  const y=Math.min(e.clientY+16,window.innerHeight-80);
+  tip.style.left=x+'px';tip.style.top=y+'px';
+}
+function hideTip(){ tip.classList.remove('on'); }
+
+// ═══ DETAIL PANEL ═══
+const panel=document.getElementById('panel');
+function openPanel(p){
+  const hc=p.s==='available'?'rgba(34,197,94,.15)':p.s==='sold'?'rgba(239,68,68,.12)':'rgba(234,179,8,.12)';
+  panel.innerHTML=`
+    <button class="panel-close" onclick="closePanel()">\u2715</button>
+    <div class="panel-hero" style="--hc:${hc}">
+      <div class="label">Block ${p.b} \u00b7 ${tn(p.t)}</div>
+      <div class="title">${p.i}</div>
+      <div class="subtitle">${ESTATE_NAME} \u2014 ${ESTATE_LOC}</div>
+    </div>
+    <div class="panel-body">
+      <div class="pd-status ${p.s}"><span class="dot"></span>${p.s}</div>
+      <div class="pd-grid">
+        <div class="pd-card"><div class="lbl">Type</div><div class="val">${tn(p.t)}</div></div>
+        <div class="pd-card"><div class="lbl">Size</div><div class="val">${p.z} m\u00b2</div></div>
+        <div class="pd-card"><div class="lbl">Block</div><div class="val">${p.b}</div></div>
+        <div class="pd-card"><div class="lbl">Plot No.</div><div class="val">${p.n}</div></div>
+        <div class="pd-card wide price"><div class="lbl">Price</div><div class="val">${fmt(p.p)}</div></div>
+        <div class="pd-card"><div class="lbl">Estate</div><div class="val">${ESTATE_NAME}</div></div>
+        <div class="pd-card"><div class="lbl">Area</div><div class="val">${ESTATE_LOC.split(',')[0]}</div></div>
+      </div>
+      <button class="enquire-btn ${p.s==='available'?'active':'disabled'}" ${p.s!=='available'?'disabled':''}>
+        ${p.s==='available'?'Enquire Now':p.s==='sold'?'Sold':'Reserved'}
+      </button>
+    </div>`;
+  panel.classList.add('open');
+}
+function closePanel(){
+  panel.classList.remove('open');
+  if(selIdx>=0){
+    const prev=plotLayer.children[selIdx];
+    if(prev) prev.classList.remove('selected');
+    selIdx=-1;
+  }
+}
+
+function selectPlot(idx){
+  if(selIdx>=0){
+    const prev=plotLayer.children[selIdx];
+    if(prev) prev.classList.remove('selected');
+  }
+  selIdx=idx;
+  const el=plotLayer.children[idx];
+  if(el) el.classList.add('selected');
+  openPanel(PLOTS[idx]);
+  // Center on plot
+  const p=PLOTS[idx];
+  const cx=window.innerWidth/2, cy=window.innerHeight/2;
+  if(scale<3){
+    const ns=5;
+    panX=cx-p.x*ns;
+    panY=cy-p.y*ns;
+    scale=ns;
+  }
+  applyTransform();
+}
+
+// Plot events
+plotLayer.addEventListener('click',e=>{
+  if(dragMoved) return;
+  const el=e.target.closest('.plot-poly');
+  if(!el) return;
+  selectPlot(parseInt(el.dataset.idx));
+});
+plotLayer.addEventListener('mousemove',e=>{
+  const el=e.target.closest('.plot-poly');
+  if(el) showTip(e,PLOTS[parseInt(el.dataset.idx)]);
+  else hideTip();
+});
+plotLayer.addEventListener('mouseleave',hideTip);
+
+// Click empty space to close
+root.addEventListener('click',e=>{
+  if(dragMoved) return;
+  if(!e.target.closest('.plot-poly')&&!e.target.closest('#panel')){
+    closePanel();
+  }
+});
+
+// ═══ UI RENDERING ═══
+function renderUI(){
+  const counts={available:0,sold:0,reserved:0};
+  PLOTS.forEach(p=>counts[p.s]++);
+  const total=PLOTS.length;
+
+  // Top bar
+  const topbar=document.createElement('div');
+  topbar.id='topbar';
+  topbar.innerHTML=`
+    <div class="brand">
+      <div class="brand-mark">${ESTATE_INITIALS}</div>
+      <div><h1>${ESTATE_NAME}</h1><div class="sub">${ESTATE_LOC}</div></div>
+    </div>
+    <div class="legend" id="legend">
+      <div class="leg-chip active" data-f="all"><div class="leg-dot" style="background:linear-gradient(135deg,#22c55e,#3b82f6)"></div>All<span class="leg-num">${total}</span></div>
+      <div class="leg-chip" data-f="available"><div class="leg-dot" style="background:#22c55e"></div>Available<span class="leg-num">${counts.available}</span></div>
+      <div class="leg-chip" data-f="sold"><div class="leg-dot" style="background:#ef4444"></div>Sold<span class="leg-num">${counts.sold}</span></div>
+      <div class="leg-chip" data-f="reserved"><div class="leg-dot" style="background:#eab308"></div>Reserved<span class="leg-num">${counts.reserved}</span></div>
+    </div>`;
+  document.body.appendChild(topbar);
+
+  // Legend filter
+  document.getElementById('legend').addEventListener('click',e=>{
+    const chip=e.target.closest('.leg-chip');
+    if(!chip) return;
+    statusFilter=chip.dataset.f;
+    document.querySelectorAll('.leg-chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    // Re-filter
+    Array.from(plotLayer.children).forEach((el,i)=>{
+      const p=PLOTS[i];
+      const blockOk=!activeBlock||p.b===activeBlock;
+      const statusOk=statusFilter==='all'||p.s===statusFilter;
+      el.style.display=(blockOk&&statusOk)?'':'none';
+    });
+  });
+
+  // Search
+  const sw=document.createElement('div');
+  sw.className='search-wrap';
+  sw.innerHTML=`<div class="search-icon"><svg><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><input id="search" placeholder="Search plot e.g. ${Object.keys(BLOCKS)[0]}-1, ${Object.keys(BLOCKS)[0]}-25...">`;
+  document.body.appendChild(sw);
+  const sr=document.createElement('div');
+  sr.className='search-results';sr.id='searchResults';
+  document.body.appendChild(sr);
+
+  document.getElementById('search').addEventListener('input',e=>{
+    const q=e.target.value.toUpperCase().trim();
+    if(!q){ sr.classList.remove('open');sr.innerHTML='';return; }
+    const matches=PLOTS.map((p,i)=>({...p,idx:i})).filter(p=>p.i.toUpperCase().includes(q)).slice(0,10);
+    if(!matches.length){ sr.classList.remove('open');sr.innerHTML='';return; }
+    sr.innerHTML=matches.map(p=>`<div class="sr-item" data-idx="${p.idx}"><div><span class="sr-id">${p.i}</span><span class="sr-block"> Block ${p.b}</span></div><span class="sr-badge ${p.s}">${p.s}</span></div>`).join('');
+    sr.classList.add('open');
+  });
+  sr.addEventListener('click',e=>{
+    const item=e.target.closest('.sr-item');
+    if(!item) return;
+    selectPlot(parseInt(item.dataset.idx));
+    sr.classList.remove('open');
+    document.getElementById('search').value='';
+  });
+
+  // Block filters
+  const bKeys=Object.keys(BLOCKS);
+  if(bKeys.length>1){
+    const bf=document.createElement('div');
+    bf.className='block-filters';
+    bf.innerHTML=`<button class="bf-rst" id="bfReset">All Blocks</button>`+bKeys.map(k=>`<button class="bf-btn" data-b="${k}">Block ${k}<span class="bf-cnt">${BLOCKS[k].count}</span></button>`).join('');
+    document.body.appendChild(bf);
+
+    bf.addEventListener('click',e=>{
+      const btn=e.target.closest('.bf-btn');
+      const rst=e.target.closest('.bf-rst');
+      if(btn){
+        const b=btn.dataset.b;
+        activeBlock=activeBlock===b?null:b;
+        document.querySelectorAll('.bf-btn').forEach(x=>x.classList.remove('on'));
+        if(activeBlock) btn.classList.add('on');
+        // Filter & zoom
+        Array.from(plotLayer.children).forEach((el,i)=>{
+          const p=PLOTS[i];
+          const blockOk=!activeBlock||p.b===activeBlock;
+          const statusOk=statusFilter==='all'||p.s===statusFilter;
+          el.style.display=(blockOk&&statusOk)?'':'none';
+        });
+        if(activeBlock&&BLOCKS[activeBlock]){
+          const bl=BLOCKS[activeBlock];
+          const cx=window.innerWidth/2, cy=window.innerHeight/2;
+          scale=6;
+          panX=cx-bl.cx*scale;
+          panY=cy-bl.cy*scale;
+          applyTransform();
+        }
+      }
+      if(rst){
+        activeBlock=null;
+        document.querySelectorAll('.bf-btn').forEach(x=>x.classList.remove('on'));
+        Array.from(plotLayer.children).forEach((el,i)=>{
+          const p=PLOTS[i];
+          const statusOk=statusFilter==='all'||p.s===statusFilter;
+          el.style.display=statusOk?'':'none';
+        });
+        fitView();
+      }
+    });
+  }
+
+  // Stats
+  const stats=document.createElement('div');
+  stats.className='stats';
+  stats.innerHTML=`
+    <div class="stat-item"><div class="stat-num" style="color:#22c55e">${counts.available}</div><div class="stat-lbl">Available</div></div>
+    <div class="stat-item"><div class="stat-num" style="color:#ef4444">${counts.sold}</div><div class="stat-lbl">Sold</div></div>
+    <div class="stat-item"><div class="stat-num" style="color:#eab308">${counts.reserved}</div><div class="stat-lbl">Reserved</div></div>
+    <div class="stat-item"><div class="stat-num">${total}</div><div class="stat-lbl">Total</div></div>`;
+  document.body.appendChild(stats);
+
+  // Zoom controls
+  const ctrls=document.createElement('div');
+  ctrls.className='ctrls';
+  ctrls.innerHTML=`
+    <button class="ctrl-btn" id="zIn"><svg><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+    <button class="ctrl-btn" id="zOut"><svg><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+    <button class="ctrl-btn" id="zFit"><svg><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>`;
+  document.body.appendChild(ctrls);
+  document.getElementById('zIn').addEventListener('click',()=>zoomAt(window.innerWidth/2,window.innerHeight/2,1.4));
+  document.getElementById('zOut').addEventListener('click',()=>zoomAt(window.innerWidth/2,window.innerHeight/2,1/1.4));
+  document.getElementById('zFit').addEventListener('click',fitView);
+
+  // Zoom percentage
+  const zp=document.createElement('div');
+  zp.className='zoom-pct';zp.textContent='100%';
+  document.body.appendChild(zp);
+
+  // Onboarding
+  const ob=document.createElement('div');
+  ob.className='onboard';
+  ob.innerHTML=`<h2>${ESTATE_NAME}</h2><div class="plots">${total} Interactive Plots</div><div class="hints"><div class="hint"><div class="hk">Scroll</div><div class="hv">Zoom</div></div><div class="hint"><div class="hk">Drag</div><div class="hv">Pan</div></div><div class="hint"><div class="hk">Click</div><div class="hv">Select</div></div></div>`;
+  document.body.appendChild(ob);
+}
+
+// ═══ INIT ═══
+renderPlots();
+renderBlockLabels();
+renderUI();
+fitView();
+</script>
+</body>
+</html>

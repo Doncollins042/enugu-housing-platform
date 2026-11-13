@@ -1,0 +1,116 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>Estate Survey Plan</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:wght@700;800&display=swap');
+:root{--bg:#f4f2ec;--paper:#fffef9;--ink:#1a1a1a;--ink2:#444;--ink3:#777;--bdr:#c8c4b8;--grn:#166534;--grn2:#dcfce7;--red:#991b1b;--red2:#fee2e2;--yel:#854d0e;--yel2:#fef9c3;--blu:#1e40af;--blu2:#dbeafe;--teal:#0d6e5d;--gold:#92740c;--f:'DM Sans',system-ui,sans-serif;--m:'JetBrains Mono',monospace;--s:'Playfair Display',serif}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:var(--bg);font-family:var(--f);color:var(--ink)}
+.hdr{position:fixed;top:0;left:0;right:0;height:56px;background:linear-gradient(135deg,#0a2e14,#0d4a1a 60%,#0a3a12);display:flex;align-items:center;padding:0 18px;z-index:200;box-shadow:0 2px 12px rgba(0,0,0,.2)}
+.hdr-logo{width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.12);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;color:#fff;font:800 10px/1 var(--m);margin-right:14px;flex-shrink:0}
+.hdr-t{font:700 14px/1.2 var(--f);color:#fff;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hdr-s{font:500 9px/1 var(--f);color:rgba(255,255,255,.55);letter-spacing:.06em;text-transform:uppercase;margin-top:3px}
+.hdr-r{margin-left:auto;display:flex;gap:6px;flex-shrink:0}
+.hb{padding:7px 14px;border-radius:7px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.85);font:600 10px var(--f);cursor:pointer;transition:.2s;backdrop-filter:blur(4px)}
+.hb:hover{background:rgba(255,255,255,.18);color:#fff}
+.pw{position:fixed;top:56px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg);cursor:grab}
+.pw:active{cursor:grabbing}
+.pi{position:absolute;transform-origin:0 0;will-change:transform}
+.pi img{display:block;width:100%;height:auto;pointer-events:none;user-select:none;-webkit-user-select:none}
+.pnl{position:fixed;top:64px;right:8px;width:280px;max-height:calc(100vh - 80px);background:var(--paper);border:1.5px solid var(--bdr);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.12);z-index:150;display:flex;flex-direction:column;overflow:hidden}
+.pnl-hd{padding:16px 16px 12px;border-bottom:1px solid #e8e5dc;flex-shrink:0}
+.pnl-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:5px;background:linear-gradient(135deg,var(--grn2),#d1fae5);font:700 8px var(--f);color:var(--grn);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;border:1px solid rgba(22,101,52,.12)}
+.pnl-title{font:800 15px var(--s);color:var(--ink);letter-spacing:-.02em;margin-bottom:2px}
+.pnl-sub{font:500 10px var(--f);color:var(--ink3);line-height:1.4}
+.srch{padding:8px 16px;border-bottom:1px solid #e8e5dc;flex-shrink:0}
+.sb{display:flex;align-items:center;gap:8px;background:#f5f3ee;border:1.5px solid #e0ddd5;border-radius:8px;padding:8px 12px;transition:.2s}
+.sb:focus-within{border-color:var(--teal);background:#fff;box-shadow:0 0 0 3px rgba(13,110,93,.08)}
+.sb svg{flex-shrink:0;color:var(--ink3)}
+.sb input{border:none;background:none;outline:none;font:500 12px var(--f);color:var(--ink);width:100%}
+.sb input::placeholder{color:#aaa}
+.sts{padding:8px 16px;display:flex;gap:5px;flex-wrap:wrap;border-bottom:1px solid #e8e5dc;flex-shrink:0}
+.st{display:flex;align-items:center;gap:4px;padding:3px 8px;border-radius:5px;font:600 9px var(--f);cursor:pointer;transition:.15s;border:1px solid transparent}
+.st:hover{background:#f5f3ee}
+.st.ac{border-color:var(--teal);background:rgba(13,110,93,.06)}
+.st .dot{width:7px;height:7px;border-radius:2px}
+.pl{flex:1;overflow-y:auto;padding:6px 8px 8px}
+.pl::-webkit-scrollbar{width:4px}.pl::-webkit-scrollbar-thumb{background:#d0cdc4;border-radius:4px}
+.pi2{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;cursor:pointer;transition:.15s;border:1.5px solid transparent;margin-bottom:3px}
+.pi2:hover{background:#f8f6f1;border-color:#e0ddd5}
+.pi2.sold{opacity:.6}
+.pn{width:42px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font:700 11px var(--m);flex-shrink:0;border:1.5px solid}
+.pn.av{background:var(--grn2);color:var(--grn);border-color:rgba(22,101,52,.2)}
+.pn.sd{background:var(--red2);color:var(--red);border-color:rgba(153,27,27,.15)}
+.pn.rv{background:var(--yel2);color:var(--yel);border-color:rgba(133,77,14,.15)}
+.pn.cm{background:var(--blu2);color:var(--blu);border-color:rgba(30,64,175,.15)}
+.pf{flex:1;min-width:0}
+.pf-i{font:600 12px var(--f);color:var(--ink)}
+.pf-d{font:400 10px var(--f);color:var(--ink3);margin-top:1px}
+.pf-p{font:700 11px var(--m);color:var(--grn);margin-top:2px}
+.pa{padding:4px 10px;border-radius:5px;font:700 8px var(--f);letter-spacing:.03em;text-transform:uppercase;flex-shrink:0}
+.pa.av{background:var(--grn2);color:var(--grn)}.pa.sd{background:var(--red2);color:var(--red)}.pa.rv{background:var(--yel2);color:var(--yel)}.pa.cm{background:var(--blu2);color:var(--blu)}
+.lgd{position:fixed;bottom:10px;left:10px;background:var(--paper);border:1.5px solid var(--bdr);border-radius:10px;padding:12px 16px;z-index:150;box-shadow:0 4px 16px rgba(0,0,0,.08)}
+.lgd-t{font:800 7px var(--f);color:var(--ink3);letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px}
+.lgd-i{display:flex;align-items:center;gap:7px;font:500 9px var(--f);color:var(--ink2);margin-bottom:4px}
+.lgd-c{width:18px;height:12px;border-radius:2px;border:1.5px solid}
+.zm{position:fixed;bottom:10px;right:296px;display:flex;flex-direction:column;gap:3px;z-index:150}
+.zb{width:36px;height:36px;border-radius:8px;background:var(--paper);border:1.5px solid var(--bdr);display:flex;align-items:center;justify-content:center;cursor:pointer;font:700 18px var(--f);color:var(--ink2);transition:.15s;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.zb:hover{background:#eceae2}
+.np{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:40px;color:var(--ink3)}
+.np h3{font:700 16px var(--s);color:var(--ink2);margin:12px 0 6px}
+.np p{font:400 12px var(--f);max-width:300px;line-height:1.6}
+.mt{display:none;position:fixed;bottom:10px;right:10px;z-index:160;padding:10px 16px;border-radius:10px;background:var(--grn);color:#fff;border:none;font:700 11px var(--f);cursor:pointer;box-shadow:0 4px 16px rgba(22,101,52,.3)}
+@media(max-width:700px){.hdr{height:48px;padding:0 12px}.hdr-t{font-size:12px}.hdr-logo{width:32px;height:32px;font-size:8px;margin-right:10px}.pnl{display:none;top:48px;left:0;right:0;width:100%;max-height:60vh;border-radius:0 0 14px 14px}.pnl.open{display:flex}.mt{display:block}.zm{right:10px;bottom:54px}.lgd{bottom:54px}}
+</style></head><body>
+<div class="hdr"><div class="hdr-logo">MOH</div><div><div class="hdr-t" id="hT">SURVEY PLAN</div><div class="hdr-s" id="hS">MINISTRY OF HOUSING</div></div><div class="hdr-r"><button class="hb" id="bFit">⊞ Fit View</button><button class="hb" id="bR">↻ Reset</button></div></div>
+<div class="pw" id="pw"><div class="pi" id="pI"></div></div>
+<div class="pnl" id="pnl"><div class="pnl-hd"><div class="pnl-badge"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg> Official Survey Plan</div><div class="pnl-title" id="pT">Select a Plot</div><div class="pnl-sub">Tap any plot to view details and pay the statutory ₦30,000 search fee</div></div><div class="srch"><div class="sb"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><input type="text" id="sI" placeholder="Search plot number..."></div></div><div class="sts" id="sR"></div><div class="pl" id="pL"></div></div>
+<div class="lgd"><div class="lgd-t">Survey Plan Legend</div><div class="lgd-i"><div class="lgd-c" style="background:var(--grn2);border-color:var(--grn)"></div>Available for Purchase</div><div class="lgd-i"><div class="lgd-c" style="background:var(--red2);border-color:var(--red)"></div>Allocated / Sold</div><div class="lgd-i"><div class="lgd-c" style="background:var(--yel2);border-color:var(--yel)"></div>Reserved</div><div class="lgd-i"><div class="lgd-c" style="background:var(--blu2);border-color:var(--blu)"></div>Commercial</div></div>
+<div class="zm"><button class="zb" id="zI">+</button><button class="zb" id="zO">&minus;</button></div>
+<button class="mt" id="mT">📋 View Plots</button>
+<script>
+(function(){
+'use strict';
+var P=new URLSearchParams(location.hash.slice(1)),EN=decodeURIComponent(P.get('name')||'Estate'),EL=decodeURIComponent(P.get('loc')||'Enugu'),TP=+(P.get('total'))||60,AV=+(P.get('avail'))||30,RP=[];
+try{var rp=P.get('plots');if(rp)RP=JSON.parse(decodeURIComponent(rp))}catch(e){}
+document.getElementById('hT').textContent=EN.toUpperCase()+' \u2014 OFFICIAL SURVEY PLAN';
+document.getElementById('hS').textContent='MINISTRY OF HOUSING, ENUGU STATE  \u2022  '+EL.toUpperCase();
+document.getElementById('pT').textContent=EN;
+var PM={'rectors garden':'/plans/rectors-garden.jpg','rectors':'/plans/rectors-garden.jpg','unity estate':'/plans/unity-estate.jpg','unity':'/plans/unity-estate.jpg','mass housing':'/plans/mass-housing.jpg','onuogba':'/plans/mass-housing.jpg','satellite':'/plans/satellite-estate.jpg','akpuoga':'/plans/satellite-estate.jpg'};
+var pS=null,nL=EN.toLowerCase();for(var k in PM){if(nL.indexOf(k)>=0){pS=PM[k];break}}
+function sd(s){return((s*9301+49297)%233280)/233280}
+function fmt(n){return'\u20A6'+Number(n).toLocaleString()}
+var RM={};RP.forEach(function(r,i){RM[i]=r});
+var plots=[];
+for(var i=0;i<TP;i++){var r=RM[i],st,tp;if(r){st=r.status==='sold'?'sold':r.type==='commercial'?'commercial':'available';tp=r.type}else{var v=sd(i*17+31);if(i<AV)st=v<.72?'available':v<.84?'reserved':v<.93?'commercial':'available';else st=v<.6?'sold':v<.78?'reserved':'commercial';tp=st==='commercial'?'commercial':'residential'}var sz=r?+r.size:(400+Math.floor(sd(i*7+3)*500)),pr=r?+r.price:(5e6+Math.floor(sd(i*11+7)*15e6/1e5)*1e5),pid=r?r.id:(i+1),bl=r?r.block:String.fromCharCode(65+Math.floor(i/(TP/4)));plots.push({id:pid,num:i+1,status:st,type:tp,size:sz,price:pr,block:bl,desc:r?r.desc:''})}
+var wrap=document.getElementById('pw'),imgDiv=document.getElementById('pI'),imgW=0,imgH=0,zoom=1,panX=0,panY=0;
+if(pS){var img=new Image();img.onload=function(){imgW=img.naturalWidth;imgH=img.naturalHeight;imgDiv.appendChild(img);fV();uT()};img.src=pS;img.style.cssText='display:block;width:100%;height:auto';img.draggable=false}
+else{imgDiv.innerHTML='<div class="np"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg><h3>Survey Plan</h3><p>The official survey plan image for '+EN+' is being digitized. Select a plot from the panel to proceed with your enquiry.</p></div>';imgW=900;imgH=700;fV()}
+var wW=0,wH=0;function gW(){wW=wrap.clientWidth;wH=wrap.clientHeight}
+function fV(){gW();if(!imgW)return;var sx=wW/imgW,sy=wH/imgH;zoom=Math.min(sx,sy)*.95;panX=(wW-imgW*zoom)/2;panY=(wH-imgH*zoom)/2;uT()}
+function uT(){imgDiv.style.transform='translate('+panX+'px,'+panY+'px) scale('+zoom+')';imgDiv.style.width=imgW+'px';imgDiv.style.height=imgH+'px'}
+var dr=false,dX=0,dY=0,lX=0,lY=0;
+wrap.addEventListener('pointerdown',function(e){dr=true;dX=e.clientX;dY=e.clientY;lX=panX;lY=panY;wrap.setPointerCapture(e.pointerId)});
+wrap.addEventListener('pointermove',function(e){if(!dr)return;panX=lX+(e.clientX-dX);panY=lY+(e.clientY-dY);uT()});
+wrap.addEventListener('pointerup',function(){dr=false});
+wrap.addEventListener('pointercancel',function(){dr=false});
+wrap.addEventListener('wheel',function(e){e.preventDefault();var mx=e.clientX,my=e.clientY-56,bx=(mx-panX)/zoom,by=(my-panY)/zoom;zoom=Math.max(.15,Math.min(8,zoom*(e.deltaY>0?.88:1.12)));panX=mx-bx*zoom;panY=my-by*zoom;uT()},{passive:false});
+var lTD=0;wrap.addEventListener('touchstart',function(e){if(e.touches.length===2){var dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;lTD=Math.sqrt(dx*dx+dy*dy)}},{passive:true});
+wrap.addEventListener('touchmove',function(e){if(e.touches.length===2){e.preventDefault();var dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY,d=Math.sqrt(dx*dx+dy*dy),mx=(e.touches[0].clientX+e.touches[1].clientX)/2,my=(e.touches[0].clientY+e.touches[1].clientY)/2-56,bx=(mx-panX)/zoom,by=(my-panY)/zoom;zoom=Math.max(.15,Math.min(8,zoom*(d/lTD)));panX=mx-bx*zoom;panY=my-by*zoom;lTD=d;uT()}},{passive:false});
+document.getElementById('bFit').onclick=fV;document.getElementById('bR').onclick=fV;
+document.getElementById('zI').onclick=function(){gW();var cx=wW/2,cy=wH/2,bx=(cx-panX)/zoom,by=(cy-panY)/zoom;zoom=Math.min(8,zoom*1.35);panX=cx-bx*zoom;panY=cy-by*zoom;uT()};
+document.getElementById('zO').onclick=function(){gW();var cx=wW/2,cy=wH/2,bx=(cx-panX)/zoom,by=(cy-panY)/zoom;zoom=Math.max(.15,zoom/1.35);panX=cx-bx*zoom;panY=cy-by*zoom;uT()};
+window.addEventListener('resize',fV);
+var ct=function(s){return plots.filter(function(p){return p.status===s}).length};
+var sR=document.getElementById('sR'),fS='all';
+[{l:'All',v:plots.length,c:'var(--ink)',f:'all'},{l:'Available',v:ct('available'),c:'var(--grn)',f:'available'},{l:'Sold',v:ct('sold'),c:'var(--red)',f:'sold'},{l:'Reserved',v:ct('reserved'),c:'var(--yel)',f:'reserved'},{l:'Commercial',v:ct('commercial'),c:'var(--blu)',f:'commercial'}].forEach(function(s){var e=document.createElement('div');e.className='st'+(s.f==='all'?' ac':'');e.dataset.f=s.f;e.innerHTML='<span class="dot" style="background:'+s.c+'"></span>'+s.l+' <b>'+s.v+'</b>';e.onclick=function(){fS=s.f;document.querySelectorAll('.st').forEach(function(x){x.classList.toggle('ac',x.dataset.f===s.f)});rP()};sR.appendChild(e)});
+var pL=document.getElementById('pL'),sI=document.getElementById('sI');
+function rP(){var q=sI.value.trim().toLowerCase(),h='',fp=plots.filter(function(p){if(fS!=='all'&&p.status!==fS)return false;if(q&&String(p.id).toLowerCase().indexOf(q)<0)return false;return true});
+if(!fp.length){h='<div style="text-align:center;padding:32px 16px;color:var(--ink3)"><div style="font-size:28px;margin-bottom:8px">\uD83D\uDD0D</div><div style="font:600 12px var(--f)">No plots found</div></div>'}
+else fp.forEach(function(p){var sc=p.status==='available'?'av':p.status==='sold'?'sd':p.status==='reserved'?'rv':'cm',sl=p.status==='sold'?'Allocated':p.status==='reserved'?'Reserved':p.status==='commercial'?'Commercial':'Available';
+h+='<div class="pi2'+(p.status==='sold'?' sold':'')+'" data-idx="'+(p.num-1)+'">'+'<div class="pn '+sc+'">'+p.id+'</div>'+'<div class="pf"><div class="pf-i">Plot '+p.id+' <span style="font:400 9px var(--f);color:var(--ink3)">\u2022 Block '+p.block+'</span></div>'+'<div class="pf-d">'+(p.type==='commercial'?'Commercial':'Residential')+' \u2022 '+p.size+' sqm</div>'+'<div class="pf-p">'+fmt(p.price)+'</div></div>'+'<div class="pa '+sc+'">'+sl+'</div></div>'});
+pL.innerHTML=h;
+pL.querySelectorAll('.pi2').forEach(function(el){el.addEventListener('click',function(){var p=plots[+this.dataset.idx];if(!p)return;window.parent.postMessage({type:'plotSearchFee',plot:{id:String(p.id),size:String(p.size),price:String(p.price),status:p.status,type:p.type,block:p.block,desc:p.desc||(p.type+' plot in Block '+p.block+', '+p.size+' sqm')}},'*')})})}
+sI.addEventListener('input',rP);rP();
+document.getElementById('mT').onclick=function(){var p=document.getElementById('pnl');p.classList.toggle('open');this.textContent=p.classList.contains('open')?'\u2715 Close':'\uD83D\uDCCB View Plots'};
+})();
+</script></body></html>
